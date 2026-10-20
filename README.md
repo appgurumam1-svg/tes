@@ -193,3 +193,8 @@ GitHub Pages, atau hosting statis apa pun. Tidak ada server/API yang dibutuhkan.
 - Perhitungan memakai kalender lokal (`yyyy-mm-dd`), bukan timestamp, agar tidak bergeser
   karena timezone.
 - Aplikasi belum mengirim notifikasi push; status "Segera" muncul saat aplikasi dibuka.
+- User baru otomatis mendapat 6 jadwal contoh saat pertama masuk; bisa dihapus.
+- Sesi Neon Auth memakai cookie `SameSite=None; Partitioned`. Browser yang memblokir total
+  cookie pihak ketiga (mis. Safari dengan ITP ketat) bisa diminta login ulang.
+- Lampiran tidak punya tombol hapus; object lama tetap di bucket sampai dihapus manual
+  (`DeleteObject` / `neon bucket object delete`).
