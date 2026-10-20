@@ -68,6 +68,15 @@ src/
 
 ## Database: Neon Postgres
 
+**Status deployment:** aktif.
+
+| Item | Nilai |
+| --- | --- |
+| Neon project | `spring-sound-61634981` (org Ancient Cell), branch `production` |
+| Neon Function | `api` → `https://br-young-firefly-a130i8rh-api.compute.c-1.ap-southeast-1.aws.neon.tech` |
+| Frontend | https://pengingataqil.vercel.app |
+| Vercel project | `tes` (env `VITE_API_URL`, target production/preview/development) |
+
 Aplikasi punya dua mode penyimpanan:
 
 | Mode | Aktif saat | Data disimpan di |
@@ -121,6 +130,16 @@ neon dev                   # jalankan Neon Function secara lokal (hot reload)
 neon deploy                # terapkan neon.ts: provision services + deploy function
 neon deploy --env .env.local   # sekaligus unggah env milik Function
 ```
+
+### Layanan Neon
+
+| Service | Status |
+| --- | --- |
+| Postgres | **dipakai** — tabel `schedules` |
+| Functions | **dipakai** — REST API `api` |
+| Auth | ter-provision di branch, belum diaktifkan di aplikasi |
+| Object Storage | ter-provision (`assets` bucket), belum dipakai |
+| AI Gateway | **gagal** — tidak tersedia di plan Free, dihapus dari `neon.ts` |
 
 ### Keamanan
 
