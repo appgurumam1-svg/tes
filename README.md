@@ -66,7 +66,68 @@ src/
   styles.css
 ```
 
-## Deploy
+## Database: Neon Postgres
+
+Aplikasi punya dua mode penyimpanan:
+
+| Mode | Aktif saat | Data disimpan di |
+| --- | --- | --- |
+| **Cloud** | `VITE_API_URL` diisi saat build | Neon Postgres, lewat Neon Function |
+| **Lokal** | `VITE_API_URL` kosong | `localStorage` browser |
+
+Arsitektur cloud:
+
+```
+Browser (SPA Vite di Vercel)
+    │  HTTPS + JSON
+    ▼
+Neon Function "api" (Hono + node-postgres)
+    │  pooled DATABASE_URL (di-inject Neon)
+    ▼
+Neon Postgres — tabel schedules
+```
+
+Tabel `schedules` dibuat otomatis (idempotent) pada request pertama, jadi tidak ada langkah
+migrasi manual.
+
+### Endpoint API
+
+| Method | Path | Fungsi |
+| --- | --- | --- |
+| GET | `/health` | Cek koneksi database |
+| GET | `/schedules` | Ambil semua jadwal |
+| POST | `/schedules` | Tambah jadwal |
+| PUT | `/schedules/:id` | Ubah jadwal |
+| DELETE | `/schedules/:id` | Hapus jadwal |
+| POST | `/schedules/:id/logs` | Catat servis / perpanjangan |
+| PUT | `/schedules` | Ganti seluruh isi (impor JSON) |
+
+### Variabel environment
+
+| Variabel | Sumber | Dipakai |
+| --- | --- | --- |
+| `DATABASE_URL` | di-inject Neon ke Function | `functions/api.ts` |
+| `VITE_API_URL` | invocation URL Function | client (`src/lib/api.ts`) |
+| `APP_ORIGIN` | opsional, pisahkan dengan koma | pembatas CORS di Function |
+
+`VITE_API_URL` diisi di `.env.local` (gitignored). Tanpa variabel itu, aplikasi tetap jalan
+dengan data lokal.
+
+### Perintah
+
+```bash
+neon login                 # sekali saja
+neon dev                   # jalankan Neon Function secara lokal (hot reload)
+neon deploy                # terapkan neon.ts: provision services + deploy function
+neon deploy --env .env.local   # sekaligus unggah env milik Function
+```
+
+### Keamanan
+
+Function ini publik dan belum memakai autentikasi pengguna — cocok untuk aplikasi pribadi.
+Untuk data sensitif/multi-user: aktifkan Neon Auth (JWT) di Function, batasi `APP_ORIGIN`,
+lalu revoke akses anonim. Jangan letakkan `DATABASE_URL` di kode klien.
+
 
 ### Vercel
 

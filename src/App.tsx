@@ -14,6 +14,7 @@ import {
   UploadIcon,
 } from './components/Icons';
 import { formatDateID, todayISO } from './lib/date';
+import { remoteEnabled, scheduleApi } from './lib/api';
 import { CATEGORY_META, computeSchedule, sortByUrgency, summarize } from './lib/schedule';
 import { createSeedSchedules } from './lib/seed';
 import {
@@ -58,8 +59,8 @@ function applyDraft(item: Schedule, draft: ScheduleDraft, now: string): Schedule
 }
 
 export default function App() {
-  const [schedules, setSchedules] = useState<Schedule[]>(
-    () => loadSchedules() ?? createSeedSchedules(),
+  const [schedules, setSchedules] = useState<Schedule[]>(() =>
+    remoteEnabled ? [] : (loadSchedules() ?? createSeedSchedules()),
   );
   const [today, setToday] = useState(todayISO());
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
@@ -67,11 +68,50 @@ export default function App() {
   const [logTarget, setLogTarget] = useState<Schedule | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Schedule | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [loading, setLoading] = useState(remoteEnabled);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bootstrapped = useRef(false);
 
   useEffect(() => {
+    if (remoteEnabled) return;
     saveSchedules(schedules);
   }, [schedules]);
+
+  // Muat data dari Neon Postgres lewat Neon Function (sekali per sesi).
+  useEffect(() => {
+    if (!remoteEnabled || bootstrapped.current) return;
+    bootstrapped.current = true;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const list = await scheduleApi.list();
+        if (cancelled) return;
+
+        if (list.length === 0) {
+          const seeds = createSeedSchedules(todayISO());
+          const saved = await scheduleApi.replaceAll(seeds);
+          if (!cancelled) setSchedules(saved);
+        } else {
+          setSchedules(list);
+        }
+        setSyncError(null);
+      } catch (error) {
+        if (!cancelled) {
+          setSyncError(
+            error instanceof Error ? error.message : 'Gagal memuat data dari Neon.',
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const refresh = () => setToday(todayISO());
@@ -107,30 +147,60 @@ export default function App() {
     return sortByUrgency(filtered, today);
   }, [schedules, filters, today]);
 
-  function handleSubmitDraft(draft: ScheduleDraft) {
-    const now = new Date().toISOString();
-    if (editor?.mode === 'edit') {
-      const targetId = editor.schedule.id;
-      setSchedules((prev) =>
-        prev.map((item) => (item.id === targetId ? applyDraft(item, draft, now) : item)),
-      );
-      setToast('Perubahan disimpan.');
-    } else {
-      const created: Schedule = {
-        ...draft,
-        id: uid('sched'),
-        history: [],
-        createdAt: now,
-        updatedAt: now,
-      };
-      setSchedules((prev) => [created, ...prev]);
-      setToast('Jadwal baru ditambahkan.');
-    }
-    setEditor(null);
+  function reportSyncError(error: unknown) {
+    const message = error instanceof Error ? error.message : 'Gagal menyimpan ke Neon.';
+    setSyncError(message);
+    setToast(message);
   }
 
-  function handleLog(draft: LogEntryDraft) {
+  async function handleSubmitDraft(draft: ScheduleDraft) {
+    const now = new Date().toISOString();
+
+    if (editor?.mode === 'edit') {
+      const target = editor.schedule;
+      const updated = applyDraft(target, draft, now);
+      setSchedules((prev) => prev.map((item) => (item.id === target.id ? updated : item)));
+      setToast('Perubahan disimpan.');
+      setEditor(null);
+
+      if (remoteEnabled) {
+        try {
+          const saved = await scheduleApi.update(updated);
+          setSchedules((prev) => prev.map((item) => (item.id === saved.id ? saved : item)));
+          setSyncError(null);
+        } catch (error) {
+          reportSyncError(error);
+        }
+      }
+      return;
+    }
+
+    const created: Schedule = {
+      ...draft,
+      id: uid('sched'),
+      history: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    setSchedules((prev) => [created, ...prev]);
+    setToast('Jadwal baru ditambahkan.');
+    setEditor(null);
+
+    if (remoteEnabled) {
+      try {
+        const saved = await scheduleApi.create(created);
+        setSchedules((prev) => prev.map((item) => (item.id === created.id ? saved : item)));
+        setSyncError(null);
+      } catch (error) {
+        reportSyncError(error);
+      }
+    }
+  }
+
+  async function handleLog(draft: LogEntryDraft) {
     if (!logTarget) return;
+    const target = logTarget;
+
     const entry: HistoryEntry = {
       id: uid('hist'),
       date: draft.date,
@@ -138,32 +208,54 @@ export default function App() {
       note: draft.note,
       nextDueDate: draft.nextDueDate,
     };
-    const targetId = logTarget.id;
-    setSchedules((prev) =>
-      prev.map((item) => {
-        if (item.id !== targetId) return item;
-        const next: Schedule = {
-          ...item,
-          history: [entry, ...item.history],
-          updatedAt: new Date().toISOString(),
-        };
-        if (item.kind === 'interval') {
-          next.lastDoneDate = draft.date;
-        } else if (draft.nextDueDate) {
-          next.dueDate = draft.nextDueDate;
-        }
-        return next;
-      }),
-    );
+
+    const optimistic: Schedule = {
+      ...target,
+      history: [entry, ...target.history],
+      updatedAt: new Date().toISOString(),
+      ...(target.kind === 'interval'
+        ? { lastDoneDate: draft.date }
+        : { dueDate: draft.nextDueDate ?? target.dueDate }),
+    };
+
+    setSchedules((prev) => prev.map((item) => (item.id === target.id ? optimistic : item)));
     setLogTarget(null);
-    setToast(`Tercatat: ${logTarget.title}.`);
+    setToast(`Tercatat: ${target.title}.`);
+
+    if (remoteEnabled) {
+      try {
+        const { schedule } = await scheduleApi.log(target.id, {
+          date: draft.date,
+          cost: draft.cost,
+          note: draft.note,
+          nextDueDate: draft.nextDueDate,
+        });
+        setSchedules((prev) => prev.map((item) => (item.id === schedule.id ? schedule : item)));
+        setSyncError(null);
+      } catch (error) {
+        reportSyncError(error);
+      }
+    }
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!deleteTarget) return;
-    setSchedules((prev) => prev.filter((item) => item.id !== deleteTarget.id));
-    setToast(`"${deleteTarget.title}" dihapus.`);
+    const target = deleteTarget;
+    setSchedules((prev) => prev.filter((item) => item.id !== target.id));
+    setToast(`"${target.title}" dihapus.`);
     setDeleteTarget(null);
+
+    if (remoteEnabled) {
+      try {
+        await scheduleApi.remove(target.id);
+        setSyncError(null);
+      } catch (error) {
+        setSchedules((prev) =>
+          prev.some((item) => item.id === target.id) ? prev : [...prev, target],
+        );
+        reportSyncError(error);
+      }
+    }
   }
 
   function handleExport() {
@@ -177,8 +269,10 @@ export default function App() {
     if (!file) return;
     try {
       const imported = importSchedules(await file.text());
-      setSchedules(imported);
-      setToast(`${imported.length} jadwal berhasil diimpor.`);
+      const next = remoteEnabled ? await scheduleApi.replaceAll(imported) : imported;
+      setSchedules(next);
+      setSyncError(null);
+      setToast(`${next.length} jadwal berhasil diimpor.`);
     } catch (error) {
       setToast(error instanceof Error ? error.message : 'Gagal mengimpor file.');
     }
@@ -210,6 +304,17 @@ export default function App() {
             </div>
           </div>
           <div className="topbar__actions">
+            <span
+              className={`sync-pill ${remoteEnabled ? 'sync-pill--cloud' : 'sync-pill--local'}`}
+              title={
+                remoteEnabled
+                  ? 'Data disimpan di Neon Postgres'
+                  : 'Data disimpan di localStorage browser ini'
+              }
+            >
+              <span className="sync-pill__dot" aria-hidden="true" />
+              {remoteEnabled ? 'Neon Postgres' : 'Lokal'}
+            </span>
             <span className="today-pill">
               <CalendarIcon size={15} />
               {formatDateID(today, { weekday: true })}
@@ -247,6 +352,13 @@ export default function App() {
       </header>
 
       <main className="main">
+        {syncError ? (
+          <div className="banner banner--error" role="alert">
+            <strong>Gagal sinkron ke Neon.</strong>
+            <span>{syncError}</span>
+          </div>
+        ) : null}
+
         <section className="hero">
           <div className="hero__copy">
             <p className="eyebrow">Catat sekali, ingat selamanya</p>
@@ -362,7 +474,15 @@ export default function App() {
           </p>
         </div>
 
-        {visible.length > 0 ? (
+        {loading ? (
+          <section className="empty">
+            <span className="empty__emoji" aria-hidden="true">
+              ⏳
+            </span>
+            <h2>Memuat data dari Neon…</h2>
+            <p>Menghubungkan ke Postgres lewat Neon Function.</p>
+          </section>
+        ) : visible.length > 0 ? (
           <section className="grid">
             {visible.map((schedule) => (
               <ScheduleCard
@@ -422,8 +542,9 @@ export default function App() {
 
       <footer className="footer">
         <p>
-          Data disimpan di browser ini (localStorage) — tidak dikirim ke mana pun. Gunakan ekspor
-          JSON untuk backup atau pindah perangkat.
+          {remoteEnabled
+            ? 'Data disimpan di Neon Postgres dan dapat diakses dari perangkat mana pun. Ekspor JSON tetap tersedia untuk backup.'
+            : 'Data disimpan di browser ini (localStorage) — tidak dikirim ke mana pun. Gunakan ekspor JSON untuk backup atau pindah perangkat.'}
         </p>
       </footer>
 

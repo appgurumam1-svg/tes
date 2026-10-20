@@ -6,20 +6,26 @@
   "description": "Pengingat aktivitas berkala dan dokumen ber-expired (oli, SIM, plat, STNK, servis)",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && tsc -p tsconfig.api.json --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0 --port 4173",
     "deploy": "npx vercel@latest deploy --prod",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.api.json --noEmit"
   },
   "dependencies": {
+    "@neon/config": "^1.9.2",
+    "@neon/env": "^1.6.3",
+    "@neon/functions": "^0.11.0",
+    "hono": "^4.13.13",
+    "pg": "^8.23.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
