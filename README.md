@@ -66,6 +66,25 @@ src/
   styles.css
 ```
 
+## Deploy
+
+### Vercel
+
+```bash
+npx vercel@latest login      # sekali saja (interaktif, di mesin sendiri)
+npm run deploy               # atau: npx vercel deploy --prod
+```
+
+Konfigurasi ada di `vercel.json` (framework Vite, output `dist`, cache immutable untuk aset).
+
+Alternatif tanpa CLI: hubungkan repo GitHub ini di dashboard Vercel → setiap push ke branch
+utama otomatis ter-deploy.
+
+### Hosting statis lain
+
+`npm run build` menghasilkan folder `dist/` yang bisa diunggah ke Netlify, Cloudflare Pages,
+GitHub Pages, atau hosting statis apa pun. Tidak ada server/API yang dibutuhkan.
+
 ## Catatan
 
 - Perhitungan memakai kalender lokal (`yyyy-mm-dd`), bukan timestamp, agar tidak bergeser
