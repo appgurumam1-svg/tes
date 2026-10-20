@@ -8,7 +8,7 @@ import {
   referenceDate,
 } from '../lib/schedule';
 import type { Schedule } from '../types';
-import { AlertIcon, CheckIcon, PencilIcon, TrashIcon } from './Icons';
+import { AlertIcon, CheckIcon, ClockIcon, PencilIcon, TrashIcon } from './Icons';
 
 interface ScheduleCardProps {
   schedule: Schedule;
@@ -25,13 +25,6 @@ export function ScheduleCard({ schedule, today, onLog, onEdit, onDelete }: Sched
   const percent = Math.round(computed.progress * 100);
   const ref = referenceDate(schedule);
   const lastHistory = schedule.history[0];
-
-  const elapsedText =
-    schedule.kind === 'interval' && computed.elapsed && ref
-      ? `Sudah ${formatDuration(computed.elapsed)} sejak ${formatDateID(ref, { short: true })}`
-      : lastHistory?.date
-        ? `Terakhir diperpanjang ${formatDateID(lastHistory.date, { short: true })}`
-        : 'Belum ada riwayat perpanjangan';
 
   return (
     <article className={`card card--${computed.status}`}>
@@ -84,7 +77,21 @@ export function ScheduleCard({ schedule, today, onLog, onEdit, onDelete }: Sched
         </div>
       </dl>
 
-      <p className="card__elapsed">{elapsedText}</p>
+      <p className="card__elapsed">
+        <ClockIcon size={14} />
+        {schedule.kind === 'interval' && computed.elapsed ? (
+          <span>
+            Sudah <strong>{formatDuration(computed.elapsed)}</strong>
+            {ref ? ` sejak ${formatDateID(ref, { short: true })}` : ''}
+          </span>
+        ) : (
+          <span>
+            {lastHistory?.date
+              ? `Terakhir diperpanjang ${formatDateID(lastHistory.date, { short: true })}`
+              : 'Belum ada riwayat perpanjangan'}
+          </span>
+        )}
+      </p>
 
       {schedule.note ? <p className="card__note">{schedule.note}</p> : null}
 
