@@ -243,6 +243,162 @@ textarea {
   color: var(--text-soft);
 }
 
+/* ---------- Auth ---------- */
+
+.auth {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 28px 18px;
+  background:
+    radial-gradient(900px 480px at 50% -10%, var(--brand-soft) 0%, transparent 60%),
+    var(--bg);
+}
+
+.auth__card {
+  width: 100%;
+  max-width: 430px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.auth__card--center {
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+}
+
+.auth__brand {
+  margin-bottom: 4px;
+}
+
+.auth__title {
+  margin: 0;
+  font-size: 1.5rem;
+  letter-spacing: -0.03em;
+}
+
+.auth__lead {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+
+.auth__tabs {
+  margin: 4px 0;
+}
+
+.auth__submit {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.auth__submit:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+.auth__note {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  min-width: 0;
+}
+
+.user-chip__avatar {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.user-chip__email {
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.76rem;
+  color: var(--text-soft);
+}
+
+.user-chip .icon-btn {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  background: transparent;
+}
+
+.input--file {
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  background: var(--surface-soft);
+}
+
+.input--file::file-selector-button {
+  margin-right: 10px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.link-btn {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--brand);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+.link-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.history__error {
+  margin: 8px 0 0;
+  font-size: 0.78rem;
+  color: var(--danger);
+}
+
 /* ---------- Buttons ---------- */
 
 .btn {

@@ -1,4 +1,4 @@
-import type { HistoryEntry, Schedule } from '../types';
+import type { Attachment, HistoryEntry, Schedule } from '../types';
 
 /**
  * Saat `VITE_API_URL` diisi (hasil `neon deploy`), aplikasi memakai Postgres
@@ -11,26 +11,33 @@ export const API_BASE = RAW_BASE.replace(/\/+$/, '');
 export const remoteEnabled = API_BASE.length > 0 && import.meta.env.MODE !== 'test';
 
 export class ApiError extends Error {
-  constructor(message: string) {
+  status: number;
+
+  constructor(message: string, status = 0) {
     super(message);
     this.name = 'ApiError';
+    this.status = status;
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE}${path}`, {
-      ...init,
-      headers: {
-        'content-type': 'application/json',
-        ...(init?.headers ?? {}),
-      },
-    });
-  } catch {
-    throw new ApiError('Tidak bisa menghubungi server Neon. Cek koneksi internet.');
-  }
+let tokenProvider: (() => Promise<string | null>) | null = null;
 
+/** Dipasang oleh modul auth supaya setiap request membawa Bearer JWT. */
+export function setAuthTokenProvider(provider: (() => Promise<string | null>) | null): void {
+  tokenProvider = provider;
+}
+
+async function authHeaders(): Promise<Record<string, string>> {
+  if (!tokenProvider) return {};
+  try {
+    const token = await tokenProvider();
+    return token ? { authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
+
+async function parse<T>(response: Response): Promise<T> {
   const text = await response.text();
   let payload: unknown = null;
   if (text) {
@@ -46,10 +53,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       payload && typeof payload === 'object' && 'error' in payload
         ? String((payload as { error: unknown }).error)
         : `Permintaan gagal (HTTP ${response.status}).`;
-    throw new ApiError(message);
+    throw new ApiError(message, response.status);
   }
 
   return payload as T;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = {
+    'content-type': 'application/json',
+    ...(await authHeaders()),
+    ...(init?.headers ?? {}),
+  };
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  } catch {
+    throw new ApiError('Tidak bisa menghubungi server Neon. Cek koneksi internet.');
+  }
+
+  return parse<T>(response);
 }
 
 export interface HealthResponse {
@@ -90,4 +114,27 @@ export const scheduleApi = {
       method: 'PUT',
       body: JSON.stringify({ schedules }),
     }).then((r) => r.schedules),
+
+  upload: async (file: File): Promise<Attachment> => {
+    const form = new FormData();
+    form.append('file', file);
+
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}/uploads`, {
+        method: 'POST',
+        body: form,
+        headers: await authHeaders(),
+      });
+    } catch {
+      throw new ApiError('Tidak bisa mengunggah lampiran.');
+    }
+
+    return parse<Attachment>(response);
+  },
+
+  attachmentUrl: (key: string) =>
+    request<{ url: string; expiresIn: number }>(
+      `/uploads/signed?key=${encodeURIComponent(key)}`,
+    ).then((r) => r.url),
 };

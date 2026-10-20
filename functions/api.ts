@@ -2,6 +2,9 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { Pool } from 'pg';
 import { attachDatabasePool } from '@neon/functions';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 /**
  * Neon Function: REST API untuk jadwal Tenggat.
@@ -20,6 +23,55 @@ const pool = new Pool({
 });
 attachDatabasePool(pool);
 
+/* ---------- Auth (Managed Better Auth / JWT) ---------- */
+
+const authBaseUrl = process.env.NEON_AUTH_BASE_URL;
+const jwksUrl = process.env.NEON_AUTH_JWKS_URL;
+const authIssuer = authBaseUrl ? new URL(authBaseUrl).origin : null;
+const jwks = jwksUrl ? createRemoteJWKSet(new URL(jwksUrl)) : null;
+
+/** Mengembalikan `sub` (user id) dari Bearer JWT yang valid, atau null. */
+async function authenticate(request: Request): Promise<string | null> {
+  if (!jwks || !authIssuer) return null;
+  const header = request.headers.get('authorization') ?? '';
+  if (!header.toLowerCase().startsWith('bearer ')) return null;
+  try {
+    const { payload } = await jwtVerify(header.slice(7).trim(), jwks, {
+      issuer: authIssuer,
+      audience: authIssuer,
+    });
+    return typeof payload.sub === 'string' && payload.sub.length > 0 ? payload.sub : null;
+  } catch {
+    return null;
+  }
+}
+
+/* ---------- Object Storage (S3-compatible) ---------- */
+
+const s3Bucket = process.env.S3_BUCKET ?? 'assets';
+const s3 = new S3Client({
+  region: process.env.AWS_REGION ?? 'ap-southeast-1',
+  endpoint: process.env.AWS_ENDPOINT_URL_S3,
+  forcePathStyle: true,
+  credentials:
+    process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
+      ? {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+        }
+      : undefined,
+});
+
+const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+const UPLOAD_TYPES: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/heic': '.heic',
+  'application/pdf': '.pdf',
+};
+
+
 let schemaReady: Promise<void> | null = null;
 
 function ensureSchema(): Promise<void> {
@@ -29,6 +81,7 @@ function ensureSchema(): Promise<void> {
         `
         create table if not exists schedules (
           id text primary key default gen_random_uuid()::text,
+          user_id text,
           title text not null,
           category text not null default 'lainnya',
           kind text not null check (kind in ('interval', 'fixed')),
@@ -45,6 +98,8 @@ function ensureSchema(): Promise<void> {
         );
         create index if not exists schedules_due_date_idx on schedules (due_date);
         create index if not exists schedules_updated_at_idx on schedules (updated_at desc);
+        alter table schedules add column if not exists user_id text;
+        create index if not exists schedules_user_idx on schedules (user_id, created_at desc);
         `,
       )
       .then(() => undefined)
@@ -209,13 +264,29 @@ function normalize(input: SchedulePayload): { data: NormalizedSchedule } | { err
 
 const app = new Hono();
 
-const allowedOrigin = process.env.APP_ORIGIN?.trim();
+/** CORS dibatasi ke domain produksi, localhost, dan preview deployment project ini. */
+const ALLOWED_ORIGINS = new Set([
+  'https://pengingataqil.vercel.app',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+]);
+const PREVIEW_ORIGIN = /^https:\/\/tes-[a-z0-9-]+-appgurumam1-svg\.vercel\.app$/;
+
+for (const extra of (process.env.APP_ORIGIN ?? '').split(',')) {
+  const trimmed = extra.trim();
+  if (trimmed) ALLOWED_ORIGINS.add(trimmed);
+}
+
+function isAllowedOrigin(origin: string): boolean {
+  return ALLOWED_ORIGINS.has(origin) || PREVIEW_ORIGIN.test(origin);
+}
+
 app.use(
   '*',
   cors({
-    origin: allowedOrigin && allowedOrigin.length > 0 ? allowedOrigin.split(',') : '*',
+    origin: (origin) => (origin ? (isAllowedOrigin(origin) ? origin : undefined) : '*'),
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type'],
+    allowHeaders: ['Content-Type', 'Authorization'],
     maxAge: 86400,
   }),
 );
@@ -231,10 +302,14 @@ app.get('/health', async (c) => {
 });
 
 app.get('/schedules', async (c) => {
+  const userId = await authenticate(c.req.raw);
+  if (!userId) return c.json({ error: 'Silakan masuk terlebih dahulu.' }, 401);
+
   try {
     await ensureSchema();
     const result = await pool.query<ScheduleRow>(
-      `select ${SCHEDULE_COLUMNS} from schedules order by created_at desc`,
+      `select ${SCHEDULE_COLUMNS} from schedules where user_id = $1 order by created_at desc`,
+      [userId],
     );
     return c.json({ schedules: result.rows.map(mapRow) });
   } catch (error) {
@@ -243,6 +318,9 @@ app.get('/schedules', async (c) => {
 });
 
 app.post('/schedules', async (c) => {
+  const userId = await authenticate(c.req.raw);
+  if (!userId) return c.json({ error: 'Silakan masuk terlebih dahulu.' }, 401);
+
   const body = await c.req.json<SchedulePayload>().catch(() => null);
   if (!body) return c.json({ error: 'Body JSON tidak valid.' }, 400);
 
@@ -254,14 +332,15 @@ app.post('/schedules', async (c) => {
     await ensureSchema();
     const result = await pool.query<ScheduleRow>(
       `insert into schedules
-         (id, title, category, kind, note, last_done_date, interval_value, interval_unit,
+         (id, user_id, title, category, kind, note, last_done_date, interval_value, interval_unit,
           due_date, remind_before_days, cost, history, created_at, updated_at)
        values
          (coalesce($1, gen_random_uuid()::text), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-          $12::jsonb, coalesce($13::timestamptz, now()), now())
+          $12, $13::jsonb, coalesce($14::timestamptz, now()), now())
        returning ${SCHEDULE_COLUMNS}`,
       [
         data.id,
+        userId,
         data.title,
         data.category,
         data.kind,
@@ -283,6 +362,9 @@ app.post('/schedules', async (c) => {
 });
 
 app.put('/schedules/:id', async (c) => {
+  const userId = await authenticate(c.req.raw);
+  if (!userId) return c.json({ error: 'Silakan masuk terlebih dahulu.' }, 401);
+
   const id = c.req.param('id');
   const body = await c.req.json<SchedulePayload>().catch(() => null);
   if (!body) return c.json({ error: 'Body JSON tidak valid.' }, 400);
@@ -295,14 +377,15 @@ app.put('/schedules/:id', async (c) => {
     await ensureSchema();
     const result = await pool.query<ScheduleRow>(
       `update schedules set
-         title = $2, category = $3, kind = $4, note = $5,
-         last_done_date = $6, interval_value = $7, interval_unit = $8,
-         due_date = $9, remind_before_days = $10, cost = $11,
-         history = $12::jsonb, updated_at = now()
-       where id = $1
+         title = $3, category = $4, kind = $5, note = $6,
+         last_done_date = $7, interval_value = $8, interval_unit = $9,
+         due_date = $10, remind_before_days = $11, cost = $12,
+         history = $13::jsonb, updated_at = now()
+       where id = $1 and user_id = $2
        returning ${SCHEDULE_COLUMNS}`,
       [
         id,
+        userId,
         data.title,
         data.category,
         data.kind,
@@ -324,10 +407,16 @@ app.put('/schedules/:id', async (c) => {
 });
 
 app.delete('/schedules/:id', async (c) => {
+  const userId = await authenticate(c.req.raw);
+  if (!userId) return c.json({ error: 'Silakan masuk terlebih dahulu.' }, 401);
+
   const id = c.req.param('id');
   try {
     await ensureSchema();
-    const result = await pool.query('delete from schedules where id = $1', [id]);
+    const result = await pool.query('delete from schedules where id = $1 and user_id = $2', [
+      id,
+      userId,
+    ]);
     if (result.rowCount === 0) return c.json({ error: 'Jadwal tidak ditemukan.' }, 404);
     return c.json({ ok: true });
   } catch (error) {
@@ -336,9 +425,18 @@ app.delete('/schedules/:id', async (c) => {
 });
 
 app.post('/schedules/:id/logs', async (c) => {
+  const userId = await authenticate(c.req.raw);
+  if (!userId) return c.json({ error: 'Silakan masuk terlebih dahulu.' }, 401);
+
   const id = c.req.param('id');
   const body = await c.req
-    .json<{ date?: unknown; cost?: unknown; note?: unknown; nextDueDate?: unknown }>()
+    .json<{
+      date?: unknown;
+      cost?: unknown;
+      note?: unknown;
+      nextDueDate?: unknown;
+      attachment?: unknown;
+    }>()
     .catch(() => null);
   if (!body) return c.json({ error: 'Body JSON tidak valid.' }, 400);
 
@@ -346,11 +444,28 @@ app.post('/schedules/:id/logs', async (c) => {
   const nextDueDate = isoDate(body.nextDueDate);
   if (!date) return c.json({ error: 'Tanggal aksi tidak valid.' }, 400);
 
+  let attachment:
+    | { key: string; name: string; contentType?: string; size?: number }
+    | undefined;
+  if (body.attachment && typeof body.attachment === 'object') {
+    const raw = body.attachment as Record<string, unknown>;
+    const key = typeof raw.key === 'string' ? raw.key : '';
+    if (!key.startsWith(`receipts/${userId}/`)) {
+      return c.json({ error: 'Lampiran tidak valid.' }, 403);
+    }
+    attachment = {
+      key,
+      name: typeof raw.name === 'string' ? raw.name.slice(0, 120) : 'lampiran',
+      contentType: typeof raw.contentType === 'string' ? raw.contentType : undefined,
+      size: toNumber(raw.size) ?? undefined,
+    };
+  }
+
   try {
     await ensureSchema();
     const current = await pool.query<ScheduleRow>(
-      `select ${SCHEDULE_COLUMNS} from schedules where id = $1`,
-      [id],
+      `select ${SCHEDULE_COLUMNS} from schedules where id = $1 and user_id = $2`,
+      [id, userId],
     );
     if (current.rowCount === 0) return c.json({ error: 'Jadwal tidak ditemukan.' }, 404);
 
@@ -366,19 +481,20 @@ app.post('/schedules/:id/logs', async (c) => {
       note:
         typeof body.note === 'string' && body.note.trim() ? body.note.trim() : undefined,
       nextDueDate: row.kind === 'fixed' ? nextDueDate ?? undefined : undefined,
+      attachment,
     };
     const existing = Array.isArray(row.history) ? row.history : [];
     const history = [entry, ...existing].slice(0, 200);
 
     const result = await pool.query<ScheduleRow>(
       `update schedules set
-         history = $2::jsonb,
-         last_done_date = case when kind = 'interval' then $3::date else last_done_date end,
-         due_date = case when kind = 'fixed' then $4::date else due_date end,
+         history = $3::jsonb,
+         last_done_date = case when kind = 'interval' then $4::date else last_done_date end,
+         due_date = case when kind = 'fixed' then $5::date else due_date end,
          updated_at = now()
-       where id = $1
+       where id = $1 and user_id = $2
        returning ${SCHEDULE_COLUMNS}`,
-      [id, JSON.stringify(history), date, nextDueDate],
+      [id, userId, JSON.stringify(history), date, nextDueDate],
     );
 
     return c.json({ schedule: mapRow(result.rows[0]), entry });
@@ -387,8 +503,11 @@ app.post('/schedules/:id/logs', async (c) => {
   }
 });
 
-/** Ganti seluruh isi database (impor JSON / sinkronisasi awal). */
+/** Ganti seluruh isi database milik user (impor JSON / sinkronisasi awal). */
 app.put('/schedules', async (c) => {
+  const userId = await authenticate(c.req.raw);
+  if (!userId) return c.json({ error: 'Silakan masuk terlebih dahulu.' }, 401);
+
   const body = await c.req.json<{ schedules?: unknown }>().catch(() => null);
   if (!body || !Array.isArray(body.schedules)) {
     return c.json({ error: 'Format harus { schedules: [...] }.' }, 400);
@@ -405,17 +524,18 @@ app.put('/schedules', async (c) => {
   try {
     await ensureSchema();
     await client.query('begin');
-    await client.query('delete from schedules');
+    await client.query('delete from schedules where user_id = $1', [userId]);
     for (const data of normalized) {
       await client.query(
         `insert into schedules
-           (id, title, category, kind, note, last_done_date, interval_value, interval_unit,
+           (id, user_id, title, category, kind, note, last_done_date, interval_value, interval_unit,
             due_date, remind_before_days, cost, history, created_at, updated_at)
          values
-           (coalesce($1, gen_random_uuid()::text), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-            $12::jsonb, coalesce($13::timestamptz, now()), now())`,
+           (coalesce($1, gen_random_uuid()::text), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+            $13::jsonb, coalesce($14::timestamptz, now()), now())`,
         [
           data.id,
+          userId,
           data.title,
           data.category,
           data.kind,
@@ -440,9 +560,69 @@ app.put('/schedules', async (c) => {
   }
 
   const result = await pool.query<ScheduleRow>(
-    `select ${SCHEDULE_COLUMNS} from schedules order by created_at desc`,
+    `select ${SCHEDULE_COLUMNS} from schedules where user_id = $1 order by created_at desc`,
+    [userId],
   );
   return c.json({ schedules: result.rows.map(mapRow) });
+});
+
+/** Upload lampiran (struk/foto) ke Neon Object Storage. Field multipart: `file`. */
+app.post('/uploads', async (c) => {
+  const userId = await authenticate(c.req.raw);
+  if (!userId) return c.json({ error: 'Silakan masuk terlebih dahulu.' }, 401);
+
+  const body = await c.req.parseBody().catch(() => null);
+  const file = body?.['file'];
+  if (!file || typeof file === 'string' || Array.isArray(file)) {
+    return c.json({ error: 'File wajib dikirim pada field "file".' }, 400);
+  }
+  if (file.size === 0) return c.json({ error: 'File kosong.' }, 400);
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return c.json({ error: 'Ukuran file maksimal 8 MB.' }, 413);
+  }
+  const ext = UPLOAD_TYPES[file.type];
+  if (!ext) {
+    return c.json({ error: 'Tipe file tidak didukung (JPG, PNG, WEBP, HEIC, PDF).' }, 415);
+  }
+
+  const key = `receipts/${userId}/${crypto.randomUUID()}${ext}`;
+  try {
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: s3Bucket,
+        Key: key,
+        Body: Buffer.from(await file.arrayBuffer()),
+        ContentType: file.type,
+        CacheControl: 'private, max-age=31536000',
+        Metadata: { userId },
+      }),
+    );
+    return c.json(
+      { key, name: file.name.slice(0, 120), size: file.size, contentType: file.type },
+      201,
+    );
+  } catch (error) {
+    return c.json({ error: `Gagal upload: ${(error as Error).message}` }, 500);
+  }
+});
+
+/** URL sementara (10 menit) untuk membuka lampiran milik user. */
+app.get('/uploads/signed', async (c) => {
+  const userId = await authenticate(c.req.raw);
+  if (!userId) return c.json({ error: 'Silakan masuk terlebih dahulu.' }, 401);
+
+  const key = c.req.query('key') ?? '';
+  if (!key.startsWith(`receipts/${userId}/`)) {
+    return c.json({ error: 'Lampiran tidak ditemukan.' }, 404);
+  }
+  try {
+    const url = await getSignedUrl(s3, new GetObjectCommand({ Bucket: s3Bucket, Key: key }), {
+      expiresIn: 600,
+    });
+    return c.json({ url, expiresIn: 600 });
+  } catch (error) {
+    return c.json({ error: `Gagal membuat URL: ${(error as Error).message}` }, 500);
+  }
 });
 
 export default app;

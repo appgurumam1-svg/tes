@@ -133,3 +133,12 @@ export function ClockIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function LogOutIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" />
+      <path d="M10 8l-4 4 4 4M6 12h9" />
+    </svg>
+  );
+}

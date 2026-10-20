@@ -16,6 +16,13 @@ export type IntervalUnit = 'day' | 'week' | 'month' | 'year';
  */
 export type ScheduleKind = 'interval' | 'fixed';
 
+export interface Attachment {
+  key: string;
+  name: string;
+  size?: number;
+  contentType?: string;
+}
+
 export interface HistoryEntry {
   id: string;
   /** Tanggal aksi dilakukan (ISO yyyy-mm-dd). */
@@ -25,6 +32,8 @@ export interface HistoryEntry {
   note?: string;
   /** Khusus jadwal fixed: tanggal kedaluwarsa baru setelah diperpanjang. */
   nextDueDate?: string;
+  /** Lampiran di Neon Object Storage (struk/foto). */
+  attachment?: Attachment;
 }
 
 export interface Schedule {
@@ -93,5 +102,6 @@ export interface LogEntryDraft {
   cost?: number;
   note?: string;
   nextDueDate?: string;
+  attachment?: Attachment;
 }
 

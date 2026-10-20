@@ -8,6 +8,7 @@ import {
   parseISO,
   parseNumber,
 } from '../lib/date';
+import { scheduleApi, remoteEnabled } from '../lib/api';
 import { UNIT_LABEL, referenceDate } from '../lib/schedule';
 import type { LogEntryDraft, Schedule } from '../types';
 import { CalendarIcon } from './Icons';
@@ -39,6 +40,8 @@ export function LogModal({ schedule, today, onSubmit, onCancel }: LogModalProps)
   const [nextDue, setNextDue] = useState(() => defaultRenewalDate(schedule, today));
   const [cost, setCost] = useState(schedule.cost ? String(schedule.cost) : '');
   const [note, setNote] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const previewNext = useMemo(() => {
@@ -51,7 +54,7 @@ export function LogModal({ schedule, today, onSubmit, onCancel }: LogModalProps)
     return addIntervalISO(date, value, schedule.intervalUnit ?? 'month');
   }, [date, isFixed, nextDue, schedule.intervalUnit, schedule.intervalValue]);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!isISODate(date)) {
       setError('Tanggal tidak valid.');
@@ -67,12 +70,25 @@ export function LogModal({ schedule, today, onSubmit, onCancel }: LogModalProps)
         return;
       }
     }
-    onSubmit({
-      date,
-      cost: parseNumber(cost),
-      note: note.trim() || undefined,
-      nextDueDate: isFixed ? nextDue : undefined,
-    });
+
+    setBusy(true);
+    setError(null);
+    try {
+      const attachment = file ? await scheduleApi.upload(file) : undefined;
+      onSubmit({
+        date,
+        cost: parseNumber(cost),
+        note: note.trim() || undefined,
+        nextDueDate: isFixed ? nextDue : undefined,
+        attachment,
+      });
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof Error ? uploadError.message : 'Gagal mengunggah lampiran.',
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   const previewDays = previewNext ? daysBetweenISO(today, previewNext) : null;
@@ -159,6 +175,22 @@ export function LogModal({ schedule, today, onSubmit, onCancel }: LogModalProps)
         />
       </div>
 
+      {remoteEnabled ? (
+        <div className="field">
+          <label htmlFor="log-attachment">Lampiran (opsional)</label>
+          <input
+            id="log-attachment"
+            type="file"
+            className="input input--file"
+            accept="image/jpeg,image/png,image/webp,image/heic,application/pdf"
+            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+          />
+          <p className="hint">
+            Struk atau foto, maksimal 8 MB. Disimpan privat di Neon Object Storage.
+          </p>
+        </div>
+      ) : null}
+
       {previewNext && previewDays !== null ? (
         <div className="preview preview--safe">
           <span className="preview__label">Jatuh tempo berikutnya</span>
@@ -179,8 +211,8 @@ export function LogModal({ schedule, today, onSubmit, onCancel }: LogModalProps)
         <button type="button" className="btn btn--ghost" onClick={onCancel}>
           Batal
         </button>
-        <button type="submit" className="btn btn--primary">
-          Simpan catatan
+        <button type="submit" className="btn btn--primary" disabled={busy}>
+          {busy ? 'Menyimpan…' : 'Simpan catatan'}
         </button>
       </div>
     </form>

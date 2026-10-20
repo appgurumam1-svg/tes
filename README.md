@@ -32,6 +32,13 @@ npm run typecheck
 3. Atur **ingatkan sebelum** berapa hari → status berubah jadi "Segera" saat mendekati tenggat.
 4. Saat servis/perpanjangan dilakukan, klik **Catat servis** / **Perpanjang**.
    Tanggal terakhir (atau masa berlaku baru) otomatis diperbarui dan masuk ke riwayat.
+5. Lampiran struk/foto bisa diunggah saat mencatat (maks. 8 MB, JPG/PNG/WEBP/HEIC/PDF).
+   File disimpan privat di Object Storage dan dibuka lewat tautan sementara.
+
+### Akun
+
+Aplikasi memakai Neon Auth (email + password). Daftar sekali, lalu data jadwal tersimpan per akun
+dan bisa dibuka dari perangkat lain. Tombol keluar ada di kanan atas.
 
 ## Fitur
 
@@ -74,8 +81,10 @@ src/
 | --- | --- |
 | Neon project | `spring-sound-61634981` (org Ancient Cell), branch `production` |
 | Neon Function | `api` → `https://br-young-firefly-a130i8rh-api.compute.c-1.ap-southeast-1.aws.neon.tech` |
+| Neon Auth | `https://ep-rapid-tooth-a1az3by9.neonauth.ap-southeast-1.aws.neon.tech/neondb/auth` |
+| Object Storage | bucket `assets` (private), endpoint `https://br-young-firefly-a130i8rh.storage.c-1.ap-southeast-1.aws.neon.tech` |
 | Frontend | https://pengingataqil.vercel.app |
-| Vercel project | `tes` (env `VITE_API_URL`, target production/preview/development) |
+| Vercel project | `tes` (env `VITE_API_URL`, `VITE_NEON_AUTH_URL`, target production/preview/development) |
 
 Aplikasi punya dua mode penyimpanan:
 
@@ -108,16 +117,25 @@ migrasi manual.
 | POST | `/schedules` | Tambah jadwal |
 | PUT | `/schedules/:id` | Ubah jadwal |
 | DELETE | `/schedules/:id` | Hapus jadwal |
-| POST | `/schedules/:id/logs` | Catat servis / perpanjangan |
-| PUT | `/schedules` | Ganti seluruh isi (impor JSON) |
+| POST | `/schedules/:id/logs` | Catat servis / perpanjangan (+ lampiran) |
+| PUT | `/schedules` | Ganti seluruh isi milik user (impor JSON) |
+| POST | `/uploads` | Upload struk/foto (multipart `file`) |
+| GET | `/uploads/signed?key=` | URL sementara (10 menit) untuk lampiran |
+
+Semua endpoint `/schedules` dan `/uploads` memerlukan header
+`Authorization: Bearer <JWT>` dari Neon Auth. Tanpa token → `401`.
 
 ### Variabel environment
 
 | Variabel | Sumber | Dipakai |
 | --- | --- | --- |
 | `DATABASE_URL` | di-inject Neon ke Function | `functions/api.ts` |
+| `NEON_AUTH_BASE_URL` | di-inject Neon | issuer JWT + URL Auth di klien |
+| `NEON_AUTH_JWKS_URL` | di-inject Neon | verifikasi tanda tangan JWT |
+| `AWS_*` | di-inject Neon | upload & signed URL Object Storage |
 | `VITE_API_URL` | invocation URL Function | client (`src/lib/api.ts`) |
-| `APP_ORIGIN` | opsional, pisahkan dengan koma | pembatas CORS di Function |
+| `VITE_NEON_AUTH_URL` | `NEON_AUTH_BASE_URL` | client (`src/lib/auth.ts`) |
+| `APP_ORIGIN` | opsional, pisahkan dengan koma | tambahan origin CORS |
 
 `VITE_API_URL` diisi di `.env.local` (gitignored). Tanpa variabel itu, aplikasi tetap jalan
 dengan data lokal.
@@ -137,15 +155,20 @@ neon deploy --env .env.local   # sekaligus unggah env milik Function
 | --- | --- |
 | Postgres | **dipakai** — tabel `schedules` |
 | Functions | **dipakai** — REST API `api` |
-| Auth | ter-provision di branch, belum diaktifkan di aplikasi |
-| Object Storage | ter-provision (`assets` bucket), belum dipakai |
+| Auth | **dipakai** — Managed Better Auth (email/password), JWT diverifikasi Function |
+| Object Storage | **dipakai** — bucket `assets` untuk struk/foto, akses via signed URL |
 | AI Gateway | **gagal** — tidak tersedia di plan Free, dihapus dari `neon.ts` |
 
 ### Keamanan
 
-Function ini publik dan belum memakai autentikasi pengguna — cocok untuk aplikasi pribadi.
-Untuk data sensitif/multi-user: aktifkan Neon Auth (JWT) di Function, batasi `APP_ORIGIN`,
-lalu revoke akses anonim. Jangan letakkan `DATABASE_URL` di kode klien.
+- **Autentikasi:** setiap request ke `/schedules` dan `/uploads` wajib membawa JWT Neon Auth.
+  Token diverifikasi terhadap JWKS (`EdDSA`), issuer & audience dicek.
+- **Isolasi data:** tabel punya kolom `user_id`; semua query difilter `user_id = sub` dari JWT,
+  sehingga user lain tidak bisa membaca/menghapus data (diuji → `404`).
+- **CORS:** hanya `https://pengingataqil.vercel.app`, localhost, dan preview project ini.
+  Origin asing tidak mendapat header `Access-Control-Allow-Origin`.
+- **Lampiran:** bucket privat; akses hanya lewat signed URL 10 menit milik pemilik key.
+- `DATABASE_URL` tidak pernah dikirim ke browser.
 
 
 ### Vercel

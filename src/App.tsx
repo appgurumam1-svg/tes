@@ -9,12 +9,21 @@ import {
   CalendarIcon,
   CheckIcon,
   DownloadIcon,
+  LogOutIcon,
   PlusIcon,
   SearchIcon,
   UploadIcon,
 } from './components/Icons';
 import { formatDateID, todayISO } from './lib/date';
-import { remoteEnabled, scheduleApi } from './lib/api';
+import { ApiError, remoteEnabled, scheduleApi } from './lib/api';
+import {
+  authEnabled,
+  clearAuthCache,
+  getSession,
+  signOut,
+  type AuthUser,
+} from './lib/auth';
+import { AuthScreen } from './components/AuthScreen';
 import { CATEGORY_META, computeSchedule, sortByUrgency, summarize } from './lib/schedule';
 import { createSeedSchedules } from './lib/seed';
 import {
@@ -70,19 +79,37 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [loading, setLoading] = useState(remoteEnabled);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(authEnabled);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const bootstrapped = useRef(false);
+  const bootstrapped = useRef<string | null>(null);
+
+  // Sesi Neon Auth (cookie) dimuat sekali saat aplikasi dibuka.
+  useEffect(() => {
+    if (!authEnabled) return;
+    let cancelled = false;
+    void getSession().then((sessionUser) => {
+      if (cancelled) return;
+      setUser(sessionUser);
+      setAuthLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (remoteEnabled) return;
     saveSchedules(schedules);
   }, [schedules]);
 
-  // Muat data dari Neon Postgres lewat Neon Function (sekali per sesi).
+  // Muat data dari Neon Postgres lewat Neon Function (sekali per sesi/user).
   useEffect(() => {
-    if (!remoteEnabled || bootstrapped.current) return;
-    bootstrapped.current = true;
+    const key = authEnabled ? user?.id ?? null : 'anon';
+    if (!remoteEnabled || (authEnabled && !user) || bootstrapped.current === key) return;
+    bootstrapped.current = key;
     let cancelled = false;
+    setLoading(true);
 
     void (async () => {
       try {
@@ -111,7 +138,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     const refresh = () => setToday(todayISO());
@@ -148,9 +175,26 @@ export default function App() {
   }, [schedules, filters, today]);
 
   function reportSyncError(error: unknown) {
+    if (error instanceof ApiError && error.status === 401) {
+      clearAuthCache();
+      bootstrapped.current = null;
+      setUser(null);
+      setSyncError('Sesi kamu berakhir. Silakan masuk lagi.');
+      return;
+    }
     const message = error instanceof Error ? error.message : 'Gagal menyimpan ke Neon.';
     setSyncError(message);
     setToast(message);
+  }
+
+  async function handleSignOut() {
+    await signOut();
+    clearAuthCache();
+    bootstrapped.current = null;
+    setUser(null);
+    setSchedules([]);
+    setSyncError(null);
+    setLoading(Boolean(remoteEnabled));
   }
 
   async function handleSubmitDraft(draft: ScheduleDraft) {
@@ -229,6 +273,7 @@ export default function App() {
           cost: draft.cost,
           note: draft.note,
           nextDueDate: draft.nextDueDate,
+          attachment: draft.attachment,
         });
         setSchedules((prev) => prev.map((item) => (item.id === schedule.id ? schedule : item)));
         setSyncError(null);
@@ -290,6 +335,30 @@ export default function App() {
     setFilters((prev) => ({ ...prev, status }));
   }
 
+  if (authEnabled && authLoading) {
+    return (
+      <div className="auth">
+        <div className="auth__card auth__card--center">
+          <span className="brand__mark" aria-hidden="true">
+            <BellIcon size={19} />
+          </span>
+          <p className="auth__lead">Memeriksa sesi…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (authEnabled && !user) {
+    return (
+      <AuthScreen
+        onAuthenticated={(nextUser) => {
+          setSyncError(null);
+          setUser(nextUser);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="app">
       <header className="topbar">
@@ -304,6 +373,23 @@ export default function App() {
             </div>
           </div>
           <div className="topbar__actions">
+            {authEnabled && user ? (
+              <div className="user-chip">
+                <span className="user-chip__avatar" aria-hidden="true">
+                  {(user.name || user.email).slice(0, 1).toUpperCase()}
+                </span>
+                <span className="user-chip__email">{user.email}</span>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={handleSignOut}
+                  title="Keluar"
+                >
+                  <LogOutIcon size={16} />
+                  <span className="sr-only">Keluar</span>
+                </button>
+              </div>
+            ) : null}
             <span
               className={`sync-pill ${remoteEnabled ? 'sync-pill--cloud' : 'sync-pill--local'}`}
               title={
@@ -543,7 +629,7 @@ export default function App() {
       <footer className="footer">
         <p>
           {remoteEnabled
-            ? 'Data disimpan di Neon Postgres dan dapat diakses dari perangkat mana pun. Ekspor JSON tetap tersedia untuk backup.'
+            ? 'Data disimpan di Neon Postgres atas nama akunmu dan dapat diakses dari perangkat mana pun. Ekspor JSON tetap tersedia untuk backup.'
             : 'Data disimpan di browser ini (localStorage) — tidak dikirim ke mana pun. Gunakan ekspor JSON untuk backup atau pindah perangkat.'}
         </p>
       </footer>
