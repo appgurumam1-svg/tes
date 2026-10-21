@@ -16,8 +16,9 @@
   upload → signed URL → hapus lampiran, CRUD kategori, push subscribe/unsubscribe.
   Workbook Excel berisi sheet `Jadwal` + `Riwayat`; aset PWA produksi (manifest, `sw.js`,
   3 ikon) semua `200`; alias `pengingataqil.vercel.app` sudah menunjuk produksi.
-  Email pengingat aktif lewat **Brevo API**: email uji terkirim ke `appgurumam1@gmail.com`,
-  function `remind` deployment 4 memuat `BREVO_API_KEY` + `REMINDER_EMAIL_FROM` + VAPID.
+  Email pengingat aktif lewat **Brevo API**: email uji `delivered` ke `gonzes7@gmail.com`
+  (2026-10-21 11:16 WIB) memakai sender verified `jajalcah85@gmail.com`; function `remind`
+  deployment 5 memuat `BREVO_API_KEY` + `REMINDER_EMAIL_FROM` + VAPID.
 
 ---
 
@@ -256,6 +257,12 @@ curl -s -o /dev/null -w '%{http_code}\n' https://ingatkansaya.vercel.app/
 12. Email pengingat hanya dikirim sekali per user per hari lewat `email_reminder_log`;
     kalau pengiriman gagal, baris log dihapus agar percobaan berikutnya bisa mengirim ulang.
     Tanpa konfigurasi email, function tetap jalan dan hanya mengirim Web Push.
+13. **Brevo: From harus alamat yang sudah Verified** di `Senders, domains, IPs`. Kalau belum,
+    API tetap membalas `201` tetapi event-nya `error` (“sender … is not valid”). Cek status
+    nyata lewat `GET /v3/smtp/statistics/events` (bukan hanya respons API). Saat ini yang
+    verified: `jajalcah85@gmail.com`; `appgurumam1@gmail.com` belum. Brevo menulis ulang From
+    freemail menjadi `<sender>@<id>.brevosend.com` agar DMARC align (nama tampilan tetap
+    “Tenggat”).
 
 ---
 

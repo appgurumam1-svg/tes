@@ -231,6 +231,9 @@ lokal; fitur akun, lampiran, dan push membutuhkan Neon Function.
 - Brevo memblokir IP yang tidak di-whitelist (SMTP maupun API). Karena Neon Function memakai
   IP keluar dinamis, matikan pembatasan IP di `app.brevo.com/security/authorised_ips` atau
   gunakan provider lain.
+- Brevo hanya menerima **From yang sudah Verified** di menu Senders. Kalau belum, API tetap
+  membalas sukses tetapi email tidak terkirim. From freemail ditulis ulang menjadi
+  `<alamat>@<id>.brevosend.com` agar lolos DMARC (nama pengirim tetap “Tenggat”).
 - Email hanya dikirim sekali per user per hari (tabel `email_reminder_log`), jadi retry
   trigger tidak menghasilkan duplikat. Penerima = email akun Neon Auth.
 - Shared SMTP Neon Auth (`auth@mail.myneon.app`) hanya untuk email autentikasi
