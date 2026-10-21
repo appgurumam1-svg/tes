@@ -2,9 +2,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import App from './App';
+import { createSeedSchedules } from './lib/seed';
+import { saveSchedules } from './lib/storage';
 
 beforeEach(() => {
   localStorage.clear();
+  // Data awal untuk test yang butuh jadwal; empty-state diuji terpisah.
+  saveSchedules(createSeedSchedules());
 });
 
 afterEach(() => {
@@ -12,6 +16,19 @@ afterEach(() => {
 });
 
 describe('App', () => {
+  it('mulai kosong bila belum ada data, dan contoh hanya dimuat saat diminta', () => {
+    localStorage.clear();
+    render(<App />);
+
+    expect(screen.getByText('Belum ada jadwal')).toBeTruthy();
+    expect(screen.queryByText('Ganti oli motor')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Muat contoh' }));
+
+    expect(screen.getByText('Ganti oli motor')).toBeTruthy();
+    expect(screen.queryByText('Belum ada jadwal')).toBeNull();
+  });
+
   it('menampilkan jadwal contoh beserta status', () => {
     render(<App />);
 

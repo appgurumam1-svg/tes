@@ -72,7 +72,7 @@ function applyDraft(item: Schedule, draft: ScheduleDraft, now: string): Schedule
 
 export default function App() {
   const [schedules, setSchedules] = useState<Schedule[]>(() =>
-    remoteEnabled ? [] : (loadSchedules() ?? createSeedSchedules()),
+    remoteEnabled ? [] : (loadSchedules() ?? []),
   );
   const [today, setToday] = useState(todayISO());
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
@@ -119,14 +119,7 @@ export default function App() {
       try {
         const list = await scheduleApi.list();
         if (cancelled) return;
-
-        if (list.length === 0) {
-          const seeds = createSeedSchedules(todayISO());
-          const saved = await scheduleApi.replaceAll(seeds);
-          if (!cancelled) setSchedules(saved);
-        } else {
-          setSchedules(list);
-        }
+        setSchedules(list);
         setSyncError(null);
       } catch (error) {
         if (!cancelled) {
@@ -199,6 +192,23 @@ export default function App() {
     setSchedules([]);
     setSyncError(null);
     setLoading(Boolean(remoteEnabled));
+  }
+
+  async function handleLoadSamples() {
+    const seeds = createSeedSchedules(today);
+    if (remoteEnabled) {
+      try {
+        const saved = await scheduleApi.replaceAll(seeds);
+        setSchedules(saved);
+        setSyncError(null);
+        setToast('Contoh jadwal dimuat.');
+      } catch (error) {
+        reportSyncError(error);
+      }
+      return;
+    }
+    setSchedules(seeds);
+    setToast('Contoh jadwal dimuat.');
   }
 
   async function handleDeleteAttachment(scheduleId: string, key: string) {
@@ -631,7 +641,7 @@ export default function App() {
             <h2>{schedules.length === 0 ? 'Belum ada jadwal' : 'Tidak ada yang cocok'}</h2>
             <p>
               {schedules.length === 0
-                ? 'Tambahkan servis rutin, SIM, STNK, atau apa pun yang punya tenggat. Tenggat yang menghitung sisanya.'
+                ? 'Tambahkan servis rutin, SIM, STNK, atau apa pun yang punya tenggat. Tenggat yang menghitung sisanya. Atau muat contoh untuk melihat cara kerjanya.'
                 : 'Coba ubah kata kunci, kategori, atau filter status.'}
             </p>
             {schedules.length === 0 ? (
@@ -647,10 +657,7 @@ export default function App() {
                 <button
                   type="button"
                   className="btn btn--ghost"
-                  onClick={() => {
-                    setSchedules(createSeedSchedules(today));
-                    setToast('Contoh jadwal dimuat.');
-                  }}
+                  onClick={() => void handleLoadSamples()}
                 >
                   Muat contoh
                 </button>
