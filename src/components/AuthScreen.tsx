@@ -7,6 +7,7 @@ import {
   type AuthUser,
 } from '../lib/auth';
 import { BellIcon } from './Icons';
+import { PasswordInput } from './PasswordInput';
 
 interface AuthScreenProps {
   onAuthenticated: (user: AuthUser) => void;
@@ -188,14 +189,12 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
           {isForgot ? null : (
             <div className="field">
               <label htmlFor="auth-password">{isReset ? 'Password baru' : 'Password'}</label>
-              <input
+              <PasswordInput
                 id="auth-password"
-                className="input"
-                type="password"
                 value={password}
+                onChange={setPassword}
                 autoComplete={isSignup || isReset ? 'new-password' : 'current-password'}
                 placeholder="Minimal 8 karakter"
-                onChange={(event) => setPassword(event.target.value)}
               />
             </div>
           )}
