@@ -247,8 +247,9 @@ curl -s -o /dev/null -w '%{http_code}\n' https://ingatkansaya.vercel.app/
 11. **Shared SMTP Neon Auth hanya untuk email autentikasi** (OTP/verifikasi/reset), bukan
     pengingat aplikasi. Email pengingat memakai provider sendiri: `BREVO_API_KEY`
     (disarankan), `RESEND_API_KEY`, atau `SMTP_URL` + `REMINDER_EMAIL_FROM`
-    (lihat `.env.example`). API Brevo dipakai karena SMTP Brevo memblokir IP yang tidak
-    di-whitelist, sedangkan Neon Function memakai IP keluar dinamis.
+    (lihat `.env.example`). Catatan Brevo: baik SMTP maupun API menolak IP yang tidak
+    di-whitelist (`https://app.brevo.com/security/authorised_ips`), sedangkan Neon Function
+    memakai IP keluar dinamis — matikan pembatasan IP Brevo atau pakai provider lain.
 12. Email pengingat hanya dikirim sekali per user per hari lewat `email_reminder_log`;
     kalau pengiriman gagal, baris log dihapus agar percobaan berikutnya bisa mengirim ulang.
     Tanpa konfigurasi email, function tetap jalan dan hanya mengirim Web Push.

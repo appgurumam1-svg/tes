@@ -228,6 +228,9 @@ lokal; fitur akun, lampiran, dan push membutuhkan Neon Function.
 - **Email pengingat opsional.** Isi `BREVO_API_KEY` (disarankan), `RESEND_API_KEY`, atau
   `SMTP_URL` (SMTP apa pun, mis. Gmail app password) plus `REMINDER_EMAIL_FROM`, lalu deploy
   ulang function `remind`. Tanpa konfigurasi itu email dilewati dan push tetap berjalan.
+- Brevo memblokir IP yang tidak di-whitelist (SMTP maupun API). Karena Neon Function memakai
+  IP keluar dinamis, matikan pembatasan IP di `app.brevo.com/security/authorised_ips` atau
+  gunakan provider lain.
 - Email hanya dikirim sekali per user per hari (tabel `email_reminder_log`), jadi retry
   trigger tidak menghasilkan duplikat. Penerima = email akun Neon Auth.
 - Shared SMTP Neon Auth (`auth@mail.myneon.app`) hanya untuk email autentikasi
