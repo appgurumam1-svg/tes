@@ -8,6 +8,10 @@
 - **Branch kerja:** `cline/787rz3m1`
 - **Commit terakhir saat dokumen ini dibuat:** `767c17d`
 - **Domain utama:** https://ingatkansaya.vercel.app
+- **Verifikasi terakhir (2026-10-21):** `npm test` 36/36 lulus, `npm run build` sukses,
+  `GET /health` → `{"ok":true,"database":"up"}`, situs produksi `200`, allowlist CORS
+  berperilaku benar (origin asing tanpa `Access-Control-Allow-Origin`, request tanpa JWT
+  → `401`), dan pemindaian seluruh 16 commit tidak menemukan kredensial ter-commit.
 
 ---
 
