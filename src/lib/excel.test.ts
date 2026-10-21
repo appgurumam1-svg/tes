@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { exportSchedulesToExcel } from './excel';
+import { DEFAULT_CATEGORIES } from './categories';
 import { createSeedSchedules } from './seed';
 
 afterEach(() => {
@@ -25,7 +26,7 @@ describe('exportSchedulesToExcel', () => {
     });
 
     const schedules = createSeedSchedules('2026-10-21');
-    await exportSchedulesToExcel(schedules, '2026-10-21');
+    await exportSchedulesToExcel(schedules, '2026-10-21', DEFAULT_CATEGORIES);
 
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     expect(blobs[0].size).toBeGreaterThan(1000);
@@ -58,6 +59,7 @@ describe('exportSchedulesToExcel', () => {
         },
       ],
       '2026-10-21',
+      DEFAULT_CATEGORIES,
     );
 
     expect(createObjectURL).toHaveBeenCalledTimes(1);

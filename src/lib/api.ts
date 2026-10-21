@@ -1,4 +1,4 @@
-import type { Attachment, HistoryEntry, Schedule } from '../types';
+import type { Attachment, CategoryItem, HistoryEntry, Schedule } from '../types';
 
 /**
  * Saat `VITE_API_URL` diisi (hasil `neon deploy`), aplikasi memakai Postgres
@@ -154,4 +154,24 @@ export const scheduleApi = {
     request<{ ok: boolean }>(`/push/unsubscribe?endpoint=${encodeURIComponent(endpoint)}`, {
       method: 'DELETE',
     }),
+
+  categories: {
+    list: () =>
+      request<{ categories: CategoryItem[] }>('/categories').then((r) => r.categories),
+    create: (name: string, emoji: string) =>
+      request<{ category: CategoryItem }>('/categories', {
+        method: 'POST',
+        body: JSON.stringify({ name, emoji }),
+      }).then((r) => r.category),
+    update: (id: string, name: string, emoji: string) =>
+      request<{ category: CategoryItem }>(`/categories/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name, emoji }),
+      }).then((r) => r.category),
+    remove: (id: string) =>
+      request<{ ok: boolean; movedSchedules: number }>(
+        `/categories/${encodeURIComponent(id)}`,
+        { method: 'DELETE' },
+      ),
+  },
 };

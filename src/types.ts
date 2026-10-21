@@ -1,12 +1,12 @@
 import type { DurationParts } from './lib/date';
 
-export type Category =
-  | 'kendaraan'
-  | 'dokumen'
-  | 'kesehatan'
-  | 'langganan'
-  | 'rumah'
-  | 'lainnya';
+export type Category = string;
+
+export interface CategoryItem {
+  id: Category;
+  name: string;
+  emoji: string;
+}
 
 export type IntervalUnit = 'day' | 'week' | 'month' | 'year';
 

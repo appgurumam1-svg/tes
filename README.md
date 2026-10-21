@@ -48,6 +48,7 @@ dan bisa dibuka dari perangkat lain. Tombol keluar ada di kanan atas.
 - Status berwarna + progress bar pemakaian interval
 - Pencarian, filter status & kategori, urut dari yang paling mendesak
 - Riwayat lengkap dengan biaya aktual dan total pengeluaran per jadwal
+- **Manajemen kategori**: tambah/ubah/hapus kategori sendiri (emoji + nama), jadwal pada kategori yang dihapus dipindah ke "Lainnya"
 - **Ekspor Excel (.xlsx)** berisi sheet **Jadwal** dan **Riwayat** (siap dibuka di Excel/Sheets)
 - **Tema terang / gelap / ikuti sistem** (tersimpan di perangkat)
 - **PWA**: bisa dipasang ke home screen, shell tetap terbuka saat offline
@@ -132,6 +133,10 @@ migrasi manual.
 | GET | `/push/config` | VAPID public key |
 | POST | `/push/subscribe` | Simpan subscription Web Push |
 | DELETE | `/push/unsubscribe?endpoint=` | Hapus subscription |
+| GET | `/categories` | Daftar kategori (default di-seed otomatis) |
+| POST | `/categories` | Tambah kategori |
+| PUT | `/categories/:id` | Ubah nama/emoji kategori |
+| DELETE | `/categories/:id` | Hapus kategori + pindah jadwal ke "Lainnya" |
 
 Semua endpoint `/schedules` dan `/uploads` memerlukan header
 `Authorization: Bearer <JWT>` dari Neon Auth. Tanpa token → `401`.

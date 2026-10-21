@@ -15,6 +15,13 @@ import {
 } from './components/Icons';
 import { formatDateID, todayISO } from './lib/date';
 import { exportSchedulesToExcel } from './lib/excel';
+import {
+  DEFAULT_CATEGORIES,
+  createCategoryId,
+  findCategory,
+  loadCategories,
+  saveCategories,
+} from './lib/categories';
 import { ApiError, remoteEnabled, scheduleApi } from './lib/api';
 import {
   authEnabled,
@@ -27,11 +34,13 @@ import { AuthScreen } from './components/AuthScreen';
 import { ThemeToggle } from './components/ThemeToggle';
 import { PushToggle } from './components/PushToggle';
 import { VerifyEmailForm } from './components/VerifyEmailForm';
-import { CATEGORY_META, computeSchedule, sortByUrgency, summarize } from './lib/schedule';
+import { CategoryManager } from './components/CategoryManager';
+import { computeSchedule, sortByUrgency, summarize } from './lib/schedule';
 import { createSeedSchedules } from './lib/seed';
 import { loadSchedules, saveSchedules, uid } from './lib/storage';
 import type {
   Category,
+  CategoryItem,
   Filters,
   HistoryEntry,
   LogEntryDraft,
@@ -67,6 +76,9 @@ export default function App() {
   const [schedules, setSchedules] = useState<Schedule[]>(() =>
     remoteEnabled ? [] : (loadSchedules() ?? []),
   );
+  const [categories, setCategories] = useState<CategoryItem[]>(() =>
+    remoteEnabled ? [] : loadCategories(),
+  );
   const [today, setToday] = useState(todayISO());
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [editor, setEditor] = useState<EditorState>(null);
@@ -78,6 +90,7 @@ export default function App() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(authEnabled);
   const [verifyOpen, setVerifyOpen] = useState(false);
+  const [categoryOpen, setCategoryOpen] = useState(false);
   const bootstrapped = useRef<string | null>(null);
 
   // Sesi Neon Auth (cookie) dimuat sekali saat aplikasi dibuka.
@@ -99,6 +112,11 @@ export default function App() {
     saveSchedules(schedules);
   }, [schedules]);
 
+  useEffect(() => {
+    if (remoteEnabled) return;
+    saveCategories(categories);
+  }, [categories]);
+
   // Muat data dari Neon Postgres lewat Neon Function (sekali per sesi/user).
   useEffect(() => {
     const key = authEnabled ? user?.id ?? null : 'anon';
@@ -109,9 +127,13 @@ export default function App() {
 
     void (async () => {
       try {
-        const list = await scheduleApi.list();
+        const [list, cats] = await Promise.all([
+          scheduleApi.list(),
+          scheduleApi.categories.list(),
+        ]);
         if (cancelled) return;
         setSchedules(list);
+        setCategories(cats.length > 0 ? cats : DEFAULT_CATEGORIES);
         setSyncError(null);
       } catch (error) {
         if (!cancelled) {
@@ -156,12 +178,12 @@ export default function App() {
       }
       if (!query) return true;
       const haystack = `${schedule.title} ${schedule.note ?? ''} ${
-        CATEGORY_META[schedule.category].label
+        findCategory(categories, schedule.category).name
       }`.toLowerCase();
       return haystack.includes(query);
     });
     return sortByUrgency(filtered, today);
-  }, [schedules, filters, today]);
+  }, [schedules, filters, categories, today]);
 
   function reportSyncError(error: unknown) {
     if (error instanceof ApiError && error.status === 401) {
@@ -182,6 +204,7 @@ export default function App() {
     bootstrapped.current = null;
     setUser(null);
     setSchedules([]);
+    setCategories(remoteEnabled ? [] : loadCategories());
     setSyncError(null);
     setLoading(Boolean(remoteEnabled));
   }
@@ -201,6 +224,42 @@ export default function App() {
     }
     setSchedules(seeds);
     setToast('Contoh jadwal dimuat.');
+  }
+
+  async function handleAddCategory(name: string, emoji: string) {
+    if (remoteEnabled) {
+      const created = await scheduleApi.categories.create(name, emoji);
+      setCategories((prev) => [...prev, created]);
+      setSyncError(null);
+      return;
+    }
+    setCategories((prev) => [...prev, { id: createCategoryId(name, prev), name, emoji }]);
+  }
+
+  async function handleUpdateCategory(id: string, name: string, emoji: string) {
+    if (remoteEnabled) {
+      const updated = await scheduleApi.categories.update(id, name, emoji);
+      setCategories((prev) => prev.map((item) => (item.id === id ? updated : item)));
+      setSyncError(null);
+      return;
+    }
+    setCategories((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, name, emoji } : item)),
+    );
+  }
+
+  async function handleDeleteCategory(id: string) {
+    if (remoteEnabled) {
+      await scheduleApi.categories.remove(id);
+      setSyncError(null);
+    }
+    setCategories((prev) => prev.filter((item) => item.id !== id));
+    setSchedules((prev) =>
+      prev.map((schedule) =>
+        schedule.category === id ? { ...schedule, category: 'lainnya' } : schedule,
+      ),
+    );
+    setToast('Kategori dihapus.');
   }
 
   async function handleDeleteAttachment(scheduleId: string, key: string) {
@@ -337,7 +396,7 @@ export default function App() {
       return;
     }
     try {
-      await exportSchedulesToExcel(schedules, today);
+      await exportSchedulesToExcel(schedules, today, categories);
       setToast('File Excel diunduh.');
     } catch {
       setToast('Gagal membuat file Excel.');
@@ -550,13 +609,19 @@ export default function App() {
               }
             >
               <option value="all">Semua kategori</option>
-              {(Object.keys(CATEGORY_META) as Category[]).map((key) => (
-                <option key={key} value={key}>
-                  {CATEGORY_META[key].emoji} {CATEGORY_META[key].label} (
-                  {categoryCounts.get(key) ?? 0})
+              {categories.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.emoji} {item.name} ({categoryCounts.get(item.id) ?? 0})
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm toolbar__manage"
+              onClick={() => setCategoryOpen(true)}
+            >
+              Kelola kategori
+            </button>
           </div>
 
           <div className="tabs" role="tablist" aria-label="Filter status">
@@ -600,6 +665,7 @@ export default function App() {
               <ScheduleCard
                 key={schedule.id}
                 schedule={schedule}
+                category={findCategory(categories, schedule.category)}
                 today={today}
                 onLog={setLogTarget}
                 onEdit={(item) => setEditor({ mode: 'edit', schedule: item })}
@@ -663,6 +729,7 @@ export default function App() {
             <ScheduleForm
               key={editor.mode === 'edit' ? editor.schedule.id : 'new'}
               initial={editor.mode === 'edit' ? editor.schedule : undefined}
+              categories={categories}
               today={today}
               onSubmit={handleSubmitDraft}
               onCancel={() => setEditor(null)}
@@ -696,6 +763,22 @@ export default function App() {
             onCancel={() => setLogTarget(null)}
           />
         ) : null}
+      </Modal>
+
+      <Modal
+        open={categoryOpen}
+        title="Kelola kategori"
+        subtitle="Tambah, ubah, atau hapus kategori. Jadwal pada kategori yang dihapus dipindah ke “Lainnya”."
+        onClose={() => setCategoryOpen(false)}
+        size="lg"
+      >
+        <CategoryManager
+          categories={categories}
+          counts={categoryCounts}
+          onAdd={handleAddCategory}
+          onUpdate={handleUpdateCategory}
+          onDelete={handleDeleteCategory}
+        />
       </Modal>
 
       <Modal

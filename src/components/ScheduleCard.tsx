@@ -1,27 +1,33 @@
 import { formatDateID, formatDuration, formatRupiah } from '../lib/date';
 import {
-  CATEGORY_META,
   STATUS_LABEL,
   computeSchedule,
   countdown,
   describeInterval,
   referenceDate,
 } from '../lib/schedule';
-import type { Schedule } from '../types';
+import type { CategoryItem, Schedule } from '../types';
 import { AlertIcon, CheckIcon, ClockIcon, PencilIcon, TrashIcon } from './Icons';
 
 interface ScheduleCardProps {
   schedule: Schedule;
+  category: CategoryItem;
   today: string;
   onLog: (schedule: Schedule) => void;
   onEdit: (schedule: Schedule) => void;
   onDelete: (schedule: Schedule) => void;
 }
 
-export function ScheduleCard({ schedule, today, onLog, onEdit, onDelete }: ScheduleCardProps) {
+export function ScheduleCard({
+  schedule,
+  category,
+  today,
+  onLog,
+  onEdit,
+  onDelete,
+}: ScheduleCardProps) {
   const computed = computeSchedule(schedule, today);
   const { value, caption } = countdown(computed);
-  const category = CATEGORY_META[schedule.category];
   const percent = Math.round(computed.progress * 100);
   const ref = referenceDate(schedule);
   const lastHistory = schedule.history[0];
@@ -37,7 +43,7 @@ export function ScheduleCard({ schedule, today, onLog, onEdit, onDelete }: Sched
             {schedule.title}
           </h3>
           <p className="card__sub">
-            {category.label} · {describeInterval(schedule)}
+            {category.name} · {describeInterval(schedule)}
           </p>
         </div>
         <span className={`badge badge--${computed.status}`}>

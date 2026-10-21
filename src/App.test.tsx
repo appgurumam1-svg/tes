@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import App from './App';
 import { createSeedSchedules } from './lib/seed';
 import { saveSchedules } from './lib/storage';
@@ -27,6 +27,41 @@ describe('App', () => {
 
     expect(screen.getByText('Ganti oli motor')).toBeTruthy();
     expect(screen.queryByText('Belum ada jadwal')).toBeNull();
+  });
+
+  it('mengelola kategori: tambah, ubah, hapus, dan jadwal dipindah ke Lainnya', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Kelola kategori' }));
+    const dialog = screen.getByRole('dialog');
+
+    fireEvent.change(within(dialog).getByLabelText('Nama kategori baru'), {
+      target: { value: 'Elektronik' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Tambah' }));
+    expect(await within(dialog).findByText('Elektronik')).toBeTruthy();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Edit Elektronik' }));
+    fireEvent.change(within(dialog).getByLabelText('Nama kategori'), {
+      target: { value: 'Gadget' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+    await waitFor(() => expect(within(dialog).getByText('Gadget')).toBeTruthy());
+
+    const gadgetRow = within(dialog).getByText('Gadget').closest('li') as HTMLElement;
+    fireEvent.click(within(gadgetRow).getByRole('button', { name: 'Hapus Gadget' }));
+    await waitFor(() => expect(within(dialog).queryByText('Gadget')).toBeNull());
+
+    const kendaraanRow = within(dialog).getByText('Kendaraan').closest('li') as HTMLElement;
+    fireEvent.click(within(kendaraanRow).getByRole('button', { name: 'Hapus Kendaraan' }));
+    await waitFor(() =>
+      expect(within(dialog).queryByText('Kendaraan')).toBeNull(),
+    );
+
+    expect(screen.getByText('Ganti oli motor')).toBeTruthy();
+    expect(screen.getAllByText(/Lainnya/).length).toBeGreaterThan(0);
+    confirmSpy.mockRestore();
   });
 
   it('menampilkan jadwal contoh beserta status', () => {

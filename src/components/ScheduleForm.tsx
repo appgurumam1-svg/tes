@@ -7,9 +7,10 @@ import {
   isISODate,
   parseNumber,
 } from '../lib/date';
-import { CATEGORY_META, STATUS_LABEL, UNIT_LABEL } from '../lib/schedule';
+import { STATUS_LABEL, UNIT_LABEL } from '../lib/schedule';
 import type {
   Category,
+  CategoryItem,
   IntervalUnit,
   Schedule,
   ScheduleDraft,
@@ -18,6 +19,7 @@ import type {
 
 interface ScheduleFormProps {
   initial?: Schedule;
+  categories: CategoryItem[];
   today: string;
   onSubmit: (draft: ScheduleDraft) => void;
   onCancel: () => void;
@@ -32,9 +34,17 @@ const PRESETS: { label: string; value: number; unit: IntervalUnit }[] = [
   { label: '1 tahun', value: 1, unit: 'year' },
 ];
 
-export function ScheduleForm({ initial, today, onSubmit, onCancel }: ScheduleFormProps) {
+export function ScheduleForm({
+  initial,
+  categories,
+  today,
+  onSubmit,
+  onCancel,
+}: ScheduleFormProps) {
   const [title, setTitle] = useState(initial?.title ?? '');
-  const [category, setCategory] = useState<Category>(initial?.category ?? 'kendaraan');
+  const [category, setCategory] = useState<Category>(
+    initial?.category ?? categories[0]?.id ?? 'lainnya',
+  );
   const [kind, setKind] = useState<ScheduleKind>(initial?.kind ?? 'interval');
   const [lastDone, setLastDone] = useState(initial?.lastDoneDate ?? today);
   const [intervalValue, setIntervalValue] = useState(String(initial?.intervalValue ?? 3));
@@ -131,9 +141,9 @@ export function ScheduleForm({ initial, today, onSubmit, onCancel }: ScheduleFor
           value={category}
           onChange={(event) => setCategory(event.target.value as Category)}
         >
-          {(Object.keys(CATEGORY_META) as Category[]).map((key) => (
-            <option key={key} value={key}>
-              {CATEGORY_META[key].emoji} {CATEGORY_META[key].label}
+          {categories.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.emoji} {item.name}
             </option>
           ))}
         </select>

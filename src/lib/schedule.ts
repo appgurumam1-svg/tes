@@ -1,7 +1,6 @@
 import { addIntervalISO, daysBetweenISO, diffParts, todayISO } from './date';
 import type { DurationParts } from './date';
 import type {
-  Category,
   ComputedSchedule,
   IntervalUnit,
   Schedule,
@@ -9,15 +8,6 @@ import type {
 } from '../types';
 
 export const DEFAULT_REMIND_DAYS = 30;
-
-export const CATEGORY_META: Record<Category, { label: string; emoji: string }> = {
-  kendaraan: { label: 'Kendaraan', emoji: '🛵' },
-  dokumen: { label: 'Dokumen', emoji: '🪪' },
-  kesehatan: { label: 'Kesehatan', emoji: '🩺' },
-  langganan: { label: 'Langganan', emoji: '📱' },
-  rumah: { label: 'Rumah', emoji: '🏠' },
-  lainnya: { label: 'Lainnya', emoji: '📌' },
-};
 
 export const UNIT_LABEL: Record<IntervalUnit, string> = {
   day: 'hari',

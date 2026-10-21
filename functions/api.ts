@@ -107,6 +107,15 @@ function ensureSchema(): Promise<void> {
           created_at timestamptz not null default now()
         );
         create index if not exists push_subscriptions_user_idx on push_subscriptions (user_id);
+        create table if not exists categories (
+          user_id text not null,
+          id text not null,
+          name text not null,
+          emoji text not null default '📌',
+          sort_order integer not null default 100,
+          created_at timestamptz not null default now(),
+          primary key (user_id, id)
+        );
         `,
       )
       .then(() => undefined)
@@ -143,7 +152,7 @@ interface ScheduleRow {
   updated_at: Date | string;
 }
 
-const CATEGORIES = new Set(['kendaraan', 'dokumen', 'kesehatan', 'langganan', 'rumah', 'lainnya']);
+const CATEGORY_RE = /^[a-z0-9-]{1,40}$/;
 const UNITS = new Set(['day', 'week', 'month', 'year']);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -222,10 +231,8 @@ function normalize(input: SchedulePayload): { data: NormalizedSchedule } | { err
   const kind = input.kind === 'fixed' ? 'fixed' : input.kind === 'interval' ? 'interval' : null;
   if (!kind) return { error: 'Jenis jadwal tidak valid.' };
 
-  const category =
-    typeof input.category === 'string' && CATEGORIES.has(input.category)
-      ? input.category
-      : 'lainnya';
+  const category = typeof input.category === 'string' ? input.category : '';
+  if (!CATEGORY_RE.test(category)) return { error: 'Kategori tidak valid.' };
   const intervalUnit =
     typeof input.intervalUnit === 'string' && UNITS.has(input.intervalUnit)
       ? input.intervalUnit
@@ -338,6 +345,7 @@ app.post('/schedules', async (c) => {
 
   try {
     await ensureSchema();
+    data.category = await resolveCategory(userId, data.category);
     const result = await pool.query<ScheduleRow>(
       `insert into schedules
          (id, user_id, title, category, kind, note, last_done_date, interval_value, interval_unit,
@@ -383,6 +391,7 @@ app.put('/schedules/:id', async (c) => {
 
   try {
     await ensureSchema();
+    data.category = await resolveCategory(userId, data.category);
     const result = await pool.query<ScheduleRow>(
       `update schedules set
          title = $3, category = $4, kind = $5, note = $6,
@@ -531,9 +540,11 @@ app.put('/schedules', async (c) => {
   const client = await pool.connect();
   try {
     await ensureSchema();
+    await ensureDefaultCategories(userId);
     await client.query('begin');
     await client.query('delete from schedules where user_id = $1', [userId]);
     for (const data of normalized) {
+      data.category = await resolveCategory(userId, data.category);
       await client.query(
         `insert into schedules
            (id, user_id, title, category, kind, note, last_done_date, interval_value, interval_unit,
@@ -673,6 +684,180 @@ app.delete('/uploads', async (c) => {
     return c.json({ error: `Gagal menghapus lampiran: ${(error as Error).message}` }, 500);
   }
 });
+
+/* ---------- Categories ---------- */
+
+const DEFAULT_CATEGORY_IDS = [
+  'kendaraan',
+  'dokumen',
+  'kesehatan',
+  'langganan',
+  'rumah',
+  'lainnya',
+];
+const DEFAULT_CATEGORY_NAMES = [
+  'Kendaraan',
+  'Dokumen',
+  'Kesehatan',
+  'Langganan',
+  'Rumah',
+  'Lainnya',
+];
+const DEFAULT_CATEGORY_EMOJI = ['🛵', '🪪', '🩺', '📱', '🏠', '📌'];
+const DEFAULT_CATEGORY_ORDER = [1, 2, 3, 4, 5, 6];
+
+async function ensureDefaultCategories(userId: string): Promise<void> {
+  await pool.query(
+    `insert into categories (user_id, id, name, emoji, sort_order)
+     select $1, t.id, t.name, t.emoji, t.sort_order
+     from unnest($2::text[], $3::text[], $4::text[], $5::int[])
+       as t(id, name, emoji, sort_order)
+     on conflict (user_id, id) do nothing`,
+    [
+      userId,
+      DEFAULT_CATEGORY_IDS,
+      DEFAULT_CATEGORY_NAMES,
+      DEFAULT_CATEGORY_EMOJI,
+      DEFAULT_CATEGORY_ORDER,
+    ],
+  );
+}
+
+function slugifyCategory(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 32);
+  return slug || 'kategori';
+}
+
+interface CategoryRow {
+  id: string;
+  name: string;
+  emoji: string;
+}
+
+app.get('/categories', async (c) => {
+  const userId = await authenticate(c.req.raw);
+  if (!userId) return c.json({ error: 'Silakan masuk terlebih dahulu.' }, 401);
+
+  try {
+    await ensureSchema();
+    await ensureDefaultCategories(userId);
+    const result = await pool.query<CategoryRow>(
+      'select id, name, emoji from categories where user_id = $1 order by sort_order, name',
+      [userId],
+    );
+    return c.json({ categories: result.rows });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 500);
+  }
+});
+
+app.post('/categories', async (c) => {
+  const userId = await authenticate(c.req.raw);
+  if (!userId) return c.json({ error: 'Silakan masuk terlebih dahulu.' }, 401);
+
+  const body = await c.req
+    .json<{ name?: unknown; emoji?: unknown }>()
+    .catch(() => null);
+  const name = typeof body?.name === 'string' ? body.name.trim() : '';
+  const emoji = typeof body?.emoji === 'string' && body.emoji.trim() ? body.emoji.trim() : '📌';
+  if (!name) return c.json({ error: 'Nama kategori wajib diisi.' }, 400);
+  if (name.length > 40) return c.json({ error: 'Nama kategori maksimal 40 karakter.' }, 400);
+
+  try {
+    await ensureSchema();
+    await ensureDefaultCategories(userId);
+
+    const base = slugifyCategory(name);
+    let id = base;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const exists = await pool.query(
+        'select 1 from categories where user_id = $1 and id = $2',
+        [userId, id],
+      );
+      if (exists.rowCount === 0) break;
+      id = `${base}-${Math.random().toString(36).slice(2, 6)}`;
+    }
+
+    const result = await pool.query<CategoryRow>(
+      `insert into categories (user_id, id, name, emoji, sort_order)
+       values ($1, $2, $3, $4, 100)
+       returning id, name, emoji`,
+      [userId, id, name.slice(0, 40), emoji.slice(0, 8)],
+    );
+    return c.json({ category: result.rows[0] }, 201);
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 500);
+  }
+});
+
+app.put('/categories/:id', async (c) => {
+  const userId = await authenticate(c.req.raw);
+  if (!userId) return c.json({ error: 'Silakan masuk terlebih dahulu.' }, 401);
+
+  const id = c.req.param('id');
+  const body = await c.req
+    .json<{ name?: unknown; emoji?: unknown }>()
+    .catch(() => null);
+  const name = typeof body?.name === 'string' ? body.name.trim() : '';
+  const emoji = typeof body?.emoji === 'string' && body.emoji.trim() ? body.emoji.trim() : '📌';
+  if (!name) return c.json({ error: 'Nama kategori wajib diisi.' }, 400);
+
+  try {
+    await ensureSchema();
+    const result = await pool.query<CategoryRow>(
+      `update categories set name = $3, emoji = $4
+       where user_id = $1 and id = $2
+       returning id, name, emoji`,
+      [userId, id, name.slice(0, 40), emoji.slice(0, 8)],
+    );
+    if (result.rowCount === 0) return c.json({ error: 'Kategori tidak ditemukan.' }, 404);
+    return c.json({ category: result.rows[0] });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 500);
+  }
+});
+
+app.delete('/categories/:id', async (c) => {
+  const userId = await authenticate(c.req.raw);
+  if (!userId) return c.json({ error: 'Silakan masuk terlebih dahulu.' }, 401);
+
+  const id = c.req.param('id');
+  if (id === 'lainnya') {
+    return c.json({ error: 'Kategori "Lainnya" tidak bisa dihapus.' }, 400);
+  }
+
+  try {
+    await ensureSchema();
+    const moved = await pool.query(
+      `update schedules set category = 'lainnya', updated_at = now()
+       where user_id = $1 and category = $2`,
+      [userId, id],
+    );
+    const deleted = await pool.query(
+      'delete from categories where user_id = $1 and id = $2',
+      [userId, id],
+    );
+    if (deleted.rowCount === 0) return c.json({ error: 'Kategori tidak ditemukan.' }, 404);
+    return c.json({ ok: true, movedSchedules: moved.rowCount ?? 0 });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 500);
+  }
+});
+
+/** Pastikan kategori milik user ada; kalau tidak, fallback ke "lainnya". */
+async function resolveCategory(userId: string, id: string): Promise<string> {
+  if (id === 'lainnya') return id;
+  const result = await pool.query(
+    'select 1 from categories where user_id = $1 and id = $2',
+    [userId, id],
+  );
+  return (result.rowCount ?? 0) > 0 ? id : 'lainnya';
+}
 
 /* ---------- Web Push ---------- */
 

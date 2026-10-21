@@ -1,15 +1,15 @@
 import writeExcelFile from 'write-excel-file/browser';
 import type { Cell, SheetData } from 'write-excel-file/browser';
 import { formatDateID } from './date';
+import { findCategory } from './categories';
 import {
-  CATEGORY_META,
   STATUS_LABEL,
   computeSchedule,
   countdown,
   describeInterval,
   referenceDate,
 } from './schedule';
-import type { Schedule } from '../types';
+import type { CategoryItem, Schedule } from '../types';
 
 function headerCell(value: string): Cell {
   return { value, fontWeight: 'bold', backgroundColor: '#EEF2FF', align: 'center' };
@@ -26,6 +26,7 @@ function text(value: string | number | undefined | null): Cell {
 export async function exportSchedulesToExcel(
   schedules: Schedule[],
   today: string,
+  categories: CategoryItem[],
 ): Promise<void> {
   const jadwalHeader = [
     'Judul',
@@ -50,7 +51,7 @@ export async function exportSchedulesToExcel(
 
     return [
       text(schedule.title),
-      text(CATEGORY_META[schedule.category].label),
+      text(findCategory(categories, schedule.category).name),
       text(schedule.kind === 'fixed' ? 'Tanggal tetap' : 'Berkala'),
       text(STATUS_LABEL[computed.status]),
       text(computed.dueDate ? formatDateID(computed.dueDate) : '-'),

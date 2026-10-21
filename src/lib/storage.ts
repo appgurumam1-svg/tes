@@ -1,5 +1,5 @@
 import { isISODate, todayISO } from './date';
-import { CATEGORY_META, DEFAULT_REMIND_DAYS } from './schedule';
+import { DEFAULT_REMIND_DAYS } from './schedule';
 import type {
   Category,
   HistoryEntry,
@@ -10,9 +10,9 @@ import type {
 
 export const STORAGE_KEY = 'tenggat.schedules.v1';
 
-const CATEGORIES = Object.keys(CATEGORY_META) as Category[];
 const UNITS: IntervalUnit[] = ['day', 'week', 'month', 'year'];
 const KINDS: ScheduleKind[] = ['interval', 'fixed'];
+const CATEGORY_RE = /^[a-z0-9-]{1,40}$/;
 
 export function uid(prefix = 'id'): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -55,9 +55,10 @@ export function normalizeSchedule(raw: unknown): Schedule | null {
     ? (item.kind as ScheduleKind)
     : 'interval';
 
-  const category: Category = CATEGORIES.includes(item.category as Category)
-    ? (item.category as Category)
-    : 'lainnya';
+  const category: Category =
+    typeof item.category === 'string' && CATEGORY_RE.test(item.category)
+      ? item.category
+      : 'lainnya';
 
   const intervalUnit: IntervalUnit = UNITS.includes(item.intervalUnit as IntervalUnit)
     ? (item.intervalUnit as IntervalUnit)
