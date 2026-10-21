@@ -3,7 +3,7 @@ import { cors } from 'hono/cors';
 import { Pool } from 'pg';
 import { attachDatabasePool } from '@neon/functions';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand, DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 /**
@@ -100,6 +100,13 @@ function ensureSchema(): Promise<void> {
         create index if not exists schedules_updated_at_idx on schedules (updated_at desc);
         alter table schedules add column if not exists user_id text;
         create index if not exists schedules_user_idx on schedules (user_id, created_at desc);
+        create table if not exists push_subscriptions (
+          endpoint text primary key,
+          user_id text not null,
+          subscription jsonb not null,
+          created_at timestamptz not null default now()
+        );
+        create index if not exists push_subscriptions_user_idx on push_subscriptions (user_id);
         `,
       )
       .then(() => undefined)
@@ -622,6 +629,108 @@ app.get('/uploads/signed', async (c) => {
     return c.json({ url, expiresIn: 600 });
   } catch (error) {
     return c.json({ error: `Gagal membuat URL: ${(error as Error).message}` }, 500);
+  }
+});
+
+/** Hapus lampiran dari storage sekaligus melepas referensinya di riwayat. */
+app.delete('/uploads', async (c) => {
+  const userId = await authenticate(c.req.raw);
+  if (!userId) return c.json({ error: 'Silakan masuk terlebih dahulu.' }, 401);
+
+  const key = c.req.query('key') ?? '';
+  if (!key.startsWith(`receipts/${userId}/`)) {
+    return c.json({ error: 'Lampiran tidak ditemukan.' }, 404);
+  }
+
+  try {
+    await ensureSchema();
+    const affected = await pool.query<{ id: string; history: unknown }>(
+      `select id, history from schedules
+       where user_id = $1 and history @> $2::jsonb`,
+      [userId, JSON.stringify([{ attachment: { key } }])],
+    );
+
+    for (const row of affected.rows) {
+      const history = (Array.isArray(row.history) ? row.history : []).filter(
+        (entry) =>
+          !(
+            entry &&
+            typeof entry === 'object' &&
+            'attachment' in entry &&
+            (entry as { attachment?: { key?: string } }).attachment?.key === key
+          ),
+      );
+      await pool.query(
+        'update schedules set history = $2::jsonb, updated_at = now() where id = $1 and user_id = $3',
+        [row.id, JSON.stringify(history), userId],
+      );
+    }
+
+    await s3.send(new DeleteObjectCommand({ Bucket: s3Bucket, Key: key }));
+    return c.json({ ok: true, references: affected.rowCount });
+  } catch (error) {
+    return c.json({ error: `Gagal menghapus lampiran: ${(error as Error).message}` }, 500);
+  }
+});
+
+/* ---------- Web Push ---------- */
+
+app.get('/push/config', (c) => c.json({ publicKey: process.env.VAPID_PUBLIC_KEY ?? null }));
+
+app.post('/push/subscribe', async (c) => {
+  const userId = await authenticate(c.req.raw);
+  if (!userId) return c.json({ error: 'Silakan masuk terlebih dahulu.' }, 401);
+
+  const body = await c.req.json<{ subscription?: unknown }>().catch(() => null);
+  const subscription = body?.subscription;
+  if (!subscription || typeof subscription !== 'object') {
+    return c.json({ error: 'Subscription tidak valid.' }, 400);
+  }
+
+  const raw = subscription as { endpoint?: unknown; keys?: { p256dh?: unknown; auth?: unknown } };
+  const endpoint = typeof raw.endpoint === 'string' ? raw.endpoint : '';
+  if (!endpoint.startsWith('https://')) {
+    return c.json({ error: 'Endpoint push tidak valid.' }, 400);
+  }
+  if (
+    !raw.keys ||
+    typeof raw.keys.p256dh !== 'string' ||
+    typeof raw.keys.auth !== 'string'
+  ) {
+    return c.json({ error: 'Keys push tidak lengkap.' }, 400);
+  }
+
+  try {
+    await ensureSchema();
+    await pool.query(
+      `insert into push_subscriptions (endpoint, user_id, subscription)
+       values ($1, $2, $3::jsonb)
+       on conflict (endpoint) do update
+         set user_id = excluded.user_id, subscription = excluded.subscription`,
+      [endpoint, userId, JSON.stringify(subscription)],
+    );
+    return c.json({ ok: true }, 201);
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 500);
+  }
+});
+
+app.delete('/push/unsubscribe', async (c) => {
+  const userId = await authenticate(c.req.raw);
+  if (!userId) return c.json({ error: 'Silakan masuk terlebih dahulu.' }, 401);
+
+  const endpoint = c.req.query('endpoint') ?? '';
+  if (!endpoint) return c.json({ error: 'Endpoint wajib diisi.' }, 400);
+
+  try {
+    await ensureSchema();
+    const result = await pool.query(
+      'delete from push_subscriptions where endpoint = $1 and user_id = $2',
+      [endpoint, userId],
+    );
+    return c.json({ ok: true, removed: result.rowCount });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 500);
   }
 });
 

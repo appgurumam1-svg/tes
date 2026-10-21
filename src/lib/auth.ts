@@ -14,6 +14,7 @@ export interface AuthUser {
   id: string;
   email: string;
   name?: string;
+  emailVerified?: boolean;
 }
 
 class AuthError extends Error {
@@ -110,6 +111,40 @@ export async function getSession(): Promise<AuthUser | null> {
   } catch {
     return null;
   }
+}
+
+/* ---------- Email OTP: verifikasi & reset password ---------- */
+
+export async function sendVerificationOtp(email: string): Promise<void> {
+  await call('/email-otp/send-verification-otp', {
+    method: 'POST',
+    body: JSON.stringify({ email, type: 'email-verification' }),
+  });
+}
+
+export async function verifyEmailOtp(email: string, otp: string): Promise<void> {
+  await call('/email-otp/verify-email', {
+    method: 'POST',
+    body: JSON.stringify({ email, otp }),
+  });
+}
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  await call('/email-otp/request-password-reset', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function resetPassword(
+  email: string,
+  otp: string,
+  password: string,
+): Promise<void> {
+  await call('/email-otp/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ email, otp, password }),
+  });
 }
 
 let cached: { token: string; expiresAt: number } | null = null;

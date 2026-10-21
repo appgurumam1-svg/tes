@@ -49,6 +49,11 @@ dan bisa dibuka dari perangkat lain. Tombol keluar ada di kanan atas.
 - Pencarian, filter status & kategori, urut dari yang paling mendesak
 - Riwayat lengkap dengan biaya aktual dan total pengeluaran per jadwal
 - Ekspor/impor JSON untuk backup atau pindah perangkat
+- **Tema terang / gelap / ikuti sistem** (tersimpan di perangkat)
+- **PWA**: bisa dipasang ke home screen, shell tetap terbuka saat offline
+- **Notifikasi push** harian (Web Push + VAPID) untuk jadwal yang mendekati/lewat tenggat
+- **Verifikasi email & reset password** lewat OTP 6 digit (Neon Auth)
+- **Hapus lampiran** dari storage sekaligus melepas referensinya di riwayat
 - Data disimpan di `localStorage` browser — tanpa server, tanpa akun
 - Tema terang/gelap mengikuti preferensi sistem, layout responsif
 
@@ -81,6 +86,7 @@ src/
 | --- | --- |
 | Neon project | `spring-sound-61634981` (org Ancient Cell), branch `production` |
 | Neon Function | `api` → `https://br-young-firefly-a130i8rh-api.compute.c-1.ap-southeast-1.aws.neon.tech` |
+| Neon Function | `remind` (cron harian `0 1 * * *` UTC / 08.00 WIB) |
 | Neon Auth | `https://ep-rapid-tooth-a1az3by9.neonauth.ap-southeast-1.aws.neon.tech/neondb/auth` |
 | Object Storage | bucket `assets` (private), endpoint `https://br-young-firefly-a130i8rh.storage.c-1.ap-southeast-1.aws.neon.tech` |
 | Frontend | https://pengingataqil.vercel.app |
@@ -121,6 +127,10 @@ migrasi manual.
 | PUT | `/schedules` | Ganti seluruh isi milik user (impor JSON) |
 | POST | `/uploads` | Upload struk/foto (multipart `file`) |
 | GET | `/uploads/signed?key=` | URL sementara (10 menit) untuk lampiran |
+| DELETE | `/uploads?key=` | Hapus lampiran + referensinya |
+| GET | `/push/config` | VAPID public key |
+| POST | `/push/subscribe` | Simpan subscription Web Push |
+| DELETE | `/push/unsubscribe?endpoint=` | Hapus subscription |
 
 Semua endpoint `/schedules` dan `/uploads` memerlukan header
 `Authorization: Bearer <JWT>` dari Neon Auth. Tanpa token → `401`.
@@ -135,6 +145,8 @@ Semua endpoint `/schedules` dan `/uploads` memerlukan header
 | `AWS_*` | di-inject Neon | upload & signed URL Object Storage |
 | `VITE_API_URL` | invocation URL Function | client (`src/lib/api.ts`) |
 | `VITE_NEON_AUTH_URL` | `NEON_AUTH_BASE_URL` | client (`src/lib/auth.ts`) |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | dibuat sendiri (web-push) | Function `api` & `remind` |
+| `VITE_VAPID_PUBLIC_KEY` | sama dengan public key | client (`src/lib/push.ts`) |
 | `APP_ORIGIN` | opsional, pisahkan dengan koma | tambahan origin CORS |
 
 `VITE_API_URL` diisi di `.env.local` (gitignored). Tanpa variabel itu, aplikasi tetap jalan
@@ -158,6 +170,7 @@ neon deploy --env .env.local   # sekaligus unggah env milik Function
 | Auth | **dipakai** — Managed Better Auth (email/password), JWT diverifikasi Function |
 | Object Storage | **dipakai** — bucket `assets` untuk struk/foto, akses via signed URL |
 | AI Gateway | **gagal** — tidak tersedia di plan Free, dihapus dari `neon.ts` |
+| Function Trigger | **dipakai** — cron harian `0 1 * * *` → function `remind` |
 
 ### Keamanan
 
@@ -196,5 +209,8 @@ GitHub Pages, atau hosting statis apa pun. Tidak ada server/API yang dibutuhkan.
 - User baru otomatis mendapat 6 jadwal contoh saat pertama masuk; bisa dihapus.
 - Sesi Neon Auth memakai cookie `SameSite=None; Partitioned`. Browser yang memblokir total
   cookie pihak ketiga (mis. Safari dengan ITP ketat) bisa diminta login ulang.
-- Lampiran tidak punya tombol hapus; object lama tetap di bucket sampai dihapus manual
-  (`DeleteObject` / `neon bucket object delete`).
+- Lampiran bisa dihapus dari halaman edit jadwal (tombol "Hapus lampiran"); object di bucket
+  dan referensi di riwayat ikut terhapus.
+- Push notification butuh HTTPS + izin browser. Di iOS perlu PWA dipasang ke home screen
+  (iOS 16.4+). Function `remind` berjalan sekali sehari; tidak ada pengiriman real-time.
+- Ganti VAPID key = semua subscription lama harus mendaftar ulang.

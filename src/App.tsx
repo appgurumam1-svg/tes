@@ -24,6 +24,9 @@ import {
   type AuthUser,
 } from './lib/auth';
 import { AuthScreen } from './components/AuthScreen';
+import { ThemeToggle } from './components/ThemeToggle';
+import { PushToggle } from './components/PushToggle';
+import { VerifyEmailForm } from './components/VerifyEmailForm';
 import { CATEGORY_META, computeSchedule, sortByUrgency, summarize } from './lib/schedule';
 import { createSeedSchedules } from './lib/seed';
 import {
@@ -81,6 +84,7 @@ export default function App() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(authEnabled);
+  const [verifyOpen, setVerifyOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bootstrapped = useRef<string | null>(null);
 
@@ -195,6 +199,28 @@ export default function App() {
     setSchedules([]);
     setSyncError(null);
     setLoading(Boolean(remoteEnabled));
+  }
+
+  async function handleDeleteAttachment(scheduleId: string, key: string) {
+    try {
+      await scheduleApi.deleteAttachment(key);
+      setSchedules((prev) =>
+        prev.map((item) =>
+          item.id === scheduleId
+            ? {
+                ...item,
+                history: item.history.map((entry) =>
+                  entry.attachment?.key === key ? { ...entry, attachment: undefined } : entry,
+                ),
+              }
+            : item,
+        ),
+      );
+      setSyncError(null);
+      setToast('Lampiran dihapus.');
+    } catch (error) {
+      reportSyncError(error);
+    }
   }
 
   async function handleSubmitDraft(draft: ScheduleDraft) {
@@ -373,6 +399,8 @@ export default function App() {
             </div>
           </div>
           <div className="topbar__actions">
+            <PushToggle />
+            <ThemeToggle />
             {authEnabled && user ? (
               <div className="user-chip">
                 <span className="user-chip__avatar" aria-hidden="true">
@@ -438,6 +466,20 @@ export default function App() {
       </header>
 
       <main className="main">
+        {authEnabled && user && user.emailVerified === false ? (
+          <div className="banner banner--warn" role="status">
+            <strong>Email belum diverifikasi.</strong>
+            <span>{user.email}</span>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => setVerifyOpen(true)}
+            >
+              Verifikasi email
+            </button>
+          </div>
+        ) : null}
+
         {syncError ? (
           <div className="banner banner--error" role="alert">
             <strong>Gagal sinkron ke Neon.</strong>
@@ -626,14 +668,6 @@ export default function App() {
         )}
       </main>
 
-      <footer className="footer">
-        <p>
-          {remoteEnabled
-            ? 'Data disimpan di Neon Postgres atas nama akunmu dan dapat diakses dari perangkat mana pun. Ekspor JSON tetap tersedia untuk backup.'
-            : 'Data disimpan di browser ini (localStorage) — tidak dikirim ke mana pun. Gunakan ekspor JSON untuk backup atau pindah perangkat.'}
-        </p>
-      </footer>
-
       <Modal
         open={editor !== null}
         title={editor?.mode === 'edit' ? 'Edit jadwal' : 'Jadwal baru'}
@@ -652,7 +686,16 @@ export default function App() {
               onSubmit={handleSubmitDraft}
               onCancel={() => setEditor(null)}
             />
-            {editor.mode === 'edit' ? <HistoryList schedule={editor.schedule} /> : null}
+            {editor.mode === 'edit' ? (
+              <HistoryList
+                schedule={
+                  schedules.find((item) => item.id === editor.schedule.id) ?? editor.schedule
+                }
+                onDeleteAttachment={(key) =>
+                  void handleDeleteAttachment(editor.schedule.id, key)
+                }
+              />
+            ) : null}
           </>
         ) : null}
       </Modal>
@@ -670,6 +713,27 @@ export default function App() {
             today={today}
             onSubmit={handleLog}
             onCancel={() => setLogTarget(null)}
+          />
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={verifyOpen}
+        title="Verifikasi email"
+        subtitle={user?.email}
+        onClose={() => setVerifyOpen(false)}
+      >
+        {user ? (
+          <VerifyEmailForm
+            email={user.email}
+            onCancel={() => setVerifyOpen(false)}
+            onVerified={() => {
+              void getSession().then((refreshed) => {
+                setUser(refreshed ?? { ...user, emailVerified: true });
+              });
+              setVerifyOpen(false);
+              setToast('Email berhasil diverifikasi.');
+            }}
           />
         ) : null}
       </Modal>

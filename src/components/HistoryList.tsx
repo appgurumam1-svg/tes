@@ -5,9 +5,10 @@ import type { Schedule } from '../types';
 
 interface HistoryListProps {
   schedule: Schedule;
+  onDeleteAttachment?: (key: string) => void;
 }
 
-export function HistoryList({ schedule }: HistoryListProps) {
+export function HistoryList({ schedule, onDeleteAttachment }: HistoryListProps) {
   const total = schedule.history.reduce((sum, entry) => sum + (entry.cost ?? 0), 0);
   const [opening, setOpening] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -51,14 +52,29 @@ export function HistoryList({ schedule }: HistoryListProps) {
                   </p>
                 ) : null}
                 {entry.attachment ? (
-                  <button
-                    type="button"
-                    className="link-btn"
-                    onClick={() => openAttachment(entry.id, entry.attachment!.key)}
-                    disabled={opening === entry.id}
-                  >
-                    📎 {opening === entry.id ? 'Membuka…' : entry.attachment.name}
-                  </button>
+                  <div className="attachment">
+                    <button
+                      type="button"
+                      className="link-btn"
+                      onClick={() => openAttachment(entry.id, entry.attachment!.key)}
+                      disabled={opening === entry.id}
+                    >
+                      📎 {opening === entry.id ? 'Membuka…' : entry.attachment.name}
+                    </button>
+                    {onDeleteAttachment ? (
+                      <button
+                        type="button"
+                        className="link-btn link-btn--danger"
+                        onClick={() => {
+                          if (window.confirm('Hapus lampiran ini secara permanen?')) {
+                            onDeleteAttachment(entry.attachment!.key);
+                          }
+                        }}
+                      >
+                        Hapus lampiran
+                      </button>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
               {entry.cost ? <span className="history__cost">{formatRupiah(entry.cost)}</span> : null}

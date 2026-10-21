@@ -137,4 +137,21 @@ export const scheduleApi = {
     request<{ url: string; expiresIn: number }>(
       `/uploads/signed?key=${encodeURIComponent(key)}`,
     ).then((r) => r.url),
+
+  deleteAttachment: (key: string) =>
+    request<{ ok: boolean; references: number }>(
+      `/uploads?key=${encodeURIComponent(key)}`,
+      { method: 'DELETE' },
+    ),
+
+  subscribePush: (subscription: PushSubscriptionJSON) =>
+    request<{ ok: boolean }>('/push/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ subscription }),
+    }),
+
+  unsubscribePush: (endpoint: string) =>
+    request<{ ok: boolean }>(`/push/unsubscribe?endpoint=${encodeURIComponent(endpoint)}`, {
+      method: 'DELETE',
+    }),
 };
