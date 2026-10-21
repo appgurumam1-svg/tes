@@ -8,7 +8,7 @@
 - **Branch kerja:** `cline/787rz3m1`
 - **Commit terakhir saat dokumen ini dibuat:** `767c17d`
 - **Domain utama:** https://ingatkansaya.vercel.app
-- **Verifikasi terakhir (2026-10-21):** `npm test` 36/36 lulus, `npm run build` sukses,
+- **Verifikasi terakhir (2026-10-21):** `npm test` 53/53 lulus, `npm run build` sukses,
   `GET /health` → `{"ok":true,"database":"up"}`, situs produksi `200`, allowlist CORS
   berperilaku benar (origin asing tanpa `Access-Control-Allow-Origin`, request tanpa JWT
   → `401`), dan pemindaian seluruh 16 commit tidak menemukan kredensial ter-commit.
@@ -16,6 +16,8 @@
   upload → signed URL → hapus lampiran, CRUD kategori, push subscribe/unsubscribe.
   Workbook Excel berisi sheet `Jadwal` + `Riwayat`; aset PWA produksi (manifest, `sw.js`,
   3 ikon) semua `200`; alias `pengingataqil.vercel.app` sudah menunjuk produksi.
+  Email pengingat aktif lewat **Brevo API**: email uji terkirim ke `appgurumam1@gmail.com`,
+  function `remind` deployment 4 memuat `BREVO_API_KEY` + `REMINDER_EMAIL_FROM` + VAPID.
 
 ---
 
@@ -68,7 +70,7 @@ Neon Function "api" (Hono)
   ├─ verifikasi JWT via JWKS (issuer & audience = origin Auth)
   ├─ Postgres (pooled DATABASE_URL) — filter user_id
   └─ S3-compatible Object Storage (upload/signed URL/delete)
-Neon Function "remind" (cron harian) → Web Push (VAPID)
+Neon Function "remind" (cron harian) → Web Push (VAPID) + email (Resend/SMTP)
 ```
 
 Mode lokal tetap ada: bila `VITE_API_URL` kosong, data disimpan di `localStorage`
@@ -93,6 +95,10 @@ categories(
 
 push_subscriptions(
   endpoint text pk, user_id text, subscription jsonb, created_at timestamptz
+)
+
+email_reminder_log(
+  user_id text, sent_on date, created_at timestamptz, primary key (user_id, sent_on)
 )
 ```
 
@@ -161,6 +167,7 @@ plus `APP_ORIGIN` opsional (dipisah koma).
 | Tema terang/gelap/sistem | ✅ |
 | PWA (manifest, service worker, ikon) | ✅ |
 | Web Push harian (cron 01:00 UTC) | ✅ (pengiriman ke perangkat belum diuji dari sandbox) |
+| Email pengingat harian (Brevo API, opsional) | ✅ aktif; email uji terkirim 2026-10-21 |
 | Import JSON | ❌ dihapus (diganti ekspor Excel) |
 | Notifikasi real-time | ❌ (harian saja) |
 
@@ -177,6 +184,9 @@ Disimpan di `.env.local` (gitignored) dan di-set di Vercel untuk yang berawalan 
 | `NEON_AUTH_BASE_URL`, `NEON_AUTH_JWKS_URL` | Neon (pull) | URL aman |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL_S3`, `AWS_REGION` | Neon (pull) | tidak |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | dibuat sendiri | private key **tidak** |
+| `BREVO_API_KEY` / `RESEND_API_KEY` / `SMTP_URL` | dibuat sendiri (Brevo / Resend / SMTP) | tidak |
+| `REMINDER_EMAIL_FROM` | alamat pengirim email | tidak |
+| `APP_URL` | opsional, default `https://ingatkansaya.vercel.app` | ya |
 | `VITE_API_URL` | URL function | ya (ter-bundle) |
 | `VITE_NEON_AUTH_URL` | `NEON_AUTH_BASE_URL` | ya |
 | `VITE_VAPID_PUBLIC_KEY` | VAPID public | ya |
@@ -236,12 +246,22 @@ curl -s -o /dev/null -w '%{http_code}\n' https://ingatkansaya.vercel.app/
 9. Email OTP memakai shared SMTP Neon (`auth@mail.myneon.app`); link butuh SMTP kustom,
    sedangkan kode OTP didukung.
 10. Menghapus kategori memindahkan jadwal ke `lainnya` (tidak menghapus jadwal).
+11. **Shared SMTP Neon Auth hanya untuk email autentikasi** (OTP/verifikasi/reset), bukan
+    pengingat aplikasi. Email pengingat memakai provider sendiri: `BREVO_API_KEY`
+    (disarankan), `RESEND_API_KEY`, atau `SMTP_URL` + `REMINDER_EMAIL_FROM`
+    (lihat `.env.example`). Catatan Brevo: baik SMTP maupun API menolak IP yang tidak
+    di-whitelist (`https://app.brevo.com/security/authorised_ips`), sedangkan Neon Function
+    memakai IP keluar dinamis. Untuk deployment ini blokir IP Brevo sudah **dinonaktifkan**
+    (API & SMTP keys) pada 2026-10-21.
+12. Email pengingat hanya dikirim sekali per user per hari lewat `email_reminder_log`;
+    kalau pengiriman gagal, baris log dihapus agar percobaan berikutnya bisa mengirim ulang.
+    Tanpa konfigurasi email, function tetap jalan dan hanya mengirim Web Push.
 
 ---
 
 ## 11. Handover checklist
 
-- [x] `npm install && npm test && npm run build` hijau (36 test, 2026-10-21).
+- [x] `npm install && npm test && npm run build` hijau (49 test, 2026-10-21).
 - [x] Function `api` & `remind` berstatus `completed`; `neon triggers list` menunjukkan
       `daily-reminder` (cron `0 1 * * *`, run berikutnya 2026-10-22T01:00Z). `neon deploy`
       tidak dijalankan ulang karena source tidak berubah.
@@ -253,6 +273,8 @@ curl -s -o /dev/null -w '%{http_code}\n' https://ingatkansaya.vercel.app/
 - [ ] Ganti tema & install PWA di perangkat nyata (aset PWA produksi sudah `200`).
 - [ ] Terima notifikasi push di perangkat (butuh browser ber-izin; subscribe/unsubscribe
       API sudah `201`/`200`).
+- [x] Kirim email pengingat nyata: email uji Brevo masuk (2026-10-21). Cron pertama
+      mengirim otomatis 2026-10-22 pukul 01:00 UTC (08.00 WIB).
 - [ ] Revoke semua token lama (lihat `SESSION_CREDENTIALS.local.md`).
 
 ---
@@ -262,7 +284,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://ingatkansaya.vercel.app/
 Nilai token/keys **tidak** ditulis di sini. Lihat:
 
 - `SESSION_CREDENTIALS.local.md` (gitignored, hanya ada di workspace)
-- `.env.local` (gitignored) untuk `DATABASE_URL`, AWS, VAPID, dan URL Neon
+- `.env.local` (gitignored) untuk `DATABASE_URL`, AWS, VAPID, `BREVO_API_KEY`, dan URL Neon
 
 > Jika file credentials hilang (sandbox dihapus), buat ulang:
 > - Vercel token: https://vercel.com/account/tokens
