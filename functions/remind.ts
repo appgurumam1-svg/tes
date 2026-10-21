@@ -2,10 +2,12 @@ import { attachDatabasePool } from '@neon/functions';
 import { parseTriggerDelivery } from '@neon/functions/triggers';
 import { Pool } from 'pg';
 import webpush from 'web-push';
+import { isEmailConfigured, sendMail } from './mailer';
+import { buildReminderEmail, type ReminderItem } from './reminder-email';
 
 /**
  * Function terjadwal: setiap pagi memeriksa jadwal yang mendekati/melewati tenggat
- * lalu mengirim Web Push ke subscription milik user.
+ * lalu mengirim Web Push dan/atau email ke pemilik jadwal.
  */
 
 const connectionString = process.env.DATABASE_URL;
@@ -19,6 +21,10 @@ attachDatabasePool(pool);
 const publicKey = process.env.VAPID_PUBLIC_KEY;
 const privateKey = process.env.VAPID_PRIVATE_KEY;
 const subject = process.env.VAPID_SUBJECT ?? 'mailto:admin@example.com';
+const pushEnabled = Boolean(publicKey && privateKey);
+const appUrl =
+  (process.env.APP_URL ?? 'https://ingatkansaya.vercel.app').trim().replace(/\/+$/, '') ||
+  'https://ingatkansaya.vercel.app';
 
 if (publicKey && privateKey) {
   webpush.setVapidDetails(subject, publicKey, privateKey);
@@ -104,6 +110,36 @@ interface SubscriptionRow {
   subscription: webpush.PushSubscription;
 }
 
+interface EmailRecipientRow {
+  id: string;
+  email: string;
+  banned: boolean | null;
+}
+
+/** Penanda email sudah dikirim hari ini, supaya retry trigger tidak dobel. */
+let emailLogReady: Promise<void> | null = null;
+
+function ensureEmailLog(): Promise<void> {
+  if (!emailLogReady) {
+    emailLogReady = pool
+      .query(
+        `create table if not exists email_reminder_log (
+           user_id text not null,
+           sent_on date not null,
+           created_at timestamptz not null default now(),
+           primary key (user_id, sent_on)
+         )`,
+      )
+      .then(() => undefined)
+      .catch((error: unknown) => {
+        emailLogReady = null;
+        throw error;
+      });
+  }
+  return emailLogReady;
+}
+
+
 export default {
   async fetch(request: Request): Promise<Response> {
     const parsed = await parseTriggerDelivery(request);
@@ -114,8 +150,12 @@ export default {
       );
     }
 
-    if (!publicKey || !privateKey) {
-      return Response.json({ error: 'VAPID belum diset pada function.' }, { status: 500 });
+    const emailReady = isEmailConfigured();
+    if (!pushEnabled && !emailReady) {
+      return Response.json(
+        { error: 'VAPID dan email belum dikonfigurasi pada function.' },
+        { status: 500 },
+      );
     }
 
     const dryRun = new URL(request.url).searchParams.get('dryRun') === '1';
@@ -131,27 +171,33 @@ export default {
          from schedules`,
       );
 
-      const byUser = new Map<string, { daysLeft: number; text: string }[]>();
+      const byUser = new Map<string, ReminderItem[]>();
       for (const row of schedules.rows) {
         const due = dueDateOf(row);
         if (!due) continue;
         const daysLeft = daysBetweenISO(today, due);
         if (daysLeft > row.remind_before_days) continue;
         const list = byUser.get(row.user_id) ?? [];
-        list.push({ daysLeft, text: describe(row.title, daysLeft) });
+        list.push({ title: row.title, dueDate: due, daysLeft });
         byUser.set(row.user_id, list);
       }
 
-      const subscriptions = await pool.query<SubscriptionRow>(
-        'select endpoint, user_id, subscription from push_subscriptions',
-      );
+      let subscriptions: SubscriptionRow[] = [];
+      let subscriptionCount = 0;
+      if (pushEnabled) {
+        const result = await pool.query<SubscriptionRow>(
+          'select endpoint, user_id, subscription from push_subscriptions',
+        );
+        subscriptions = result.rows;
+        subscriptionCount = result.rowCount ?? 0;
+      }
 
       let sent = 0;
       let failed = 0;
       let removed = 0;
       const details: { userId: string; title: string; body: string }[] = [];
 
-      for (const row of subscriptions.rows) {
+      for (const row of subscriptions) {
         const items = byUser.get(row.user_id);
         if (!items || items.length === 0) continue;
 
@@ -162,7 +208,7 @@ export default {
             : `Tenggat: ${items.length} jadwal perlu dicek`;
         const body = items
           .slice(0, 3)
-          .map((item) => item.text)
+          .map((item) => describe(item.title, item.daysLeft))
           .join(' • ');
 
         if (dryRun) {
@@ -187,15 +233,100 @@ export default {
         }
       }
 
+      let emailsSent = 0;
+      let emailsFailed = 0;
+      let emailsSkipped = 0;
+      let emailsPending = 0;
+      let emailError: string | null = null;
+
+      if (emailReady && byUser.size > 0) {
+        try {
+          await ensureEmailLog();
+          const ids = [...byUser.keys()];
+          const recipients = await pool.query<EmailRecipientRow>(
+            `select id, email, coalesce(banned, false) as banned
+             from neon_auth."user"
+             where id::text = any($1::text[])`,
+            [ids],
+          );
+          const emailById = new Map(
+            recipients.rows
+              .filter((row) => !row.banned && row.email)
+              .map((row) => [row.id, row.email] as const),
+          );
+
+          for (const [userId, items] of byUser) {
+            const email = emailById.get(userId);
+            if (!email) {
+              emailsSkipped += 1;
+              continue;
+            }
+
+            if (dryRun) {
+              emailsPending += 1;
+              continue;
+            }
+
+            const claim = await pool.query(
+              `insert into email_reminder_log (user_id, sent_on)
+               values ($1, $2)
+               on conflict do nothing
+               returning user_id`,
+              [userId, today],
+            );
+            if ((claim.rowCount ?? 0) === 0) {
+              emailsSkipped += 1;
+              continue;
+            }
+
+            const digest = buildReminderEmail(items, appUrl);
+            let result;
+            try {
+              result = await sendMail({ to: email, ...digest });
+            } catch (error) {
+              result = { sent: false, error: (error as Error).message };
+            }
+
+            if (result.sent) {
+              emailsSent += 1;
+            } else {
+              await pool.query(
+                'delete from email_reminder_log where user_id = $1 and sent_on = $2',
+                [userId, today],
+              );
+              if (result.skipped) {
+                emailsSkipped += 1;
+              } else {
+                emailsFailed += 1;
+                emailError = result.error ?? 'Email gagal dikirim.';
+              }
+            }
+          }
+        } catch (error) {
+          emailError = (error as Error).message;
+        }
+      }
+
       return Response.json({
         ok: true,
         dryRun,
         today,
         usersWithDueItems: byUser.size,
-        subscriptions: subscriptions.rowCount ?? 0,
-        sent,
-        failed,
-        removed,
+        push: {
+          configured: pushEnabled,
+          subscriptions: subscriptionCount,
+          sent,
+          failed,
+          removed,
+        },
+        email: {
+          configured: emailReady,
+          sent: emailsSent,
+          failed: emailsFailed,
+          skipped: emailsSkipped,
+          pending: emailsPending,
+          error: emailError,
+        },
         details,
       });
     } catch (error) {

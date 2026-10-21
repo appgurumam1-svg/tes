@@ -20,6 +20,11 @@ export default defineConfig({
         VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY!,
         VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY!,
         VAPID_SUBJECT: process.env.VAPID_SUBJECT!,
+        // Opsional: tanpa salah satu provider, email dilewati dan push tetap jalan.
+        RESEND_API_KEY: process.env.RESEND_API_KEY ?? '',
+        SMTP_URL: process.env.SMTP_URL ?? '',
+        REMINDER_EMAIL_FROM: process.env.REMINDER_EMAIL_FROM ?? '',
+        APP_URL: process.env.APP_URL ?? 'https://ingatkansaya.vercel.app',
       },
     },
   },

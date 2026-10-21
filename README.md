@@ -53,6 +53,7 @@ dan bisa dibuka dari perangkat lain. Tombol keluar ada di kanan atas.
 - **Tema terang / gelap / ikuti sistem** (tersimpan di perangkat)
 - **PWA**: bisa dipasang ke home screen, shell tetap terbuka saat offline
 - **Notifikasi push** harian (Web Push + VAPID) dikirim function `remind` pukul 08.00 WIB untuk jadwal yang mendekati/lewat tenggat
+- **Email pengingat harian** (opsional) — satu digest per user per hari ke email akun; aktif bila provider email diset
 - **Verifikasi email & reset password** lewat OTP 6 digit (Neon Auth)
 - **Hapus lampiran** dari storage sekaligus melepas referensinya di riwayat
 - Data tersimpan per akun di Neon Postgres; mode `localStorage` hanya dipakai bila `VITE_API_URL` kosong
@@ -153,6 +154,9 @@ Semua endpoint `/schedules` dan `/uploads` memerlukan header
 | `VITE_NEON_AUTH_URL` | `NEON_AUTH_BASE_URL` | client (`src/lib/auth.ts`) |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | dibuat sendiri (web-push) | Function `api` & `remind` |
 | `VITE_VAPID_PUBLIC_KEY` | sama dengan public key | client (`src/lib/push.ts`) |
+| `RESEND_API_KEY` atau `SMTP_URL` | dibuat sendiri (Resend / SMTP) | email di Function `remind` |
+| `REMINDER_EMAIL_FROM` | mis. `Tenggat <appgurumam1@gmail.com>` | alamat pengirim email |
+| `APP_URL` | opsional, default `https://ingatkansaya.vercel.app` | tautan di email |
 | `APP_ORIGIN` | opsional, pisahkan dengan koma | tambahan origin CORS |
 
 `VITE_API_URL` diisi di `.env.local` (gitignored). Tanpa variabel itu, aplikasi tetap jalan
@@ -221,4 +225,11 @@ lokal; fitur akun, lampiran, dan push membutuhkan Neon Function.
   dan referensi di riwayat ikut terhapus.
 - Push notification butuh HTTPS + izin browser. Di iOS perlu PWA dipasang ke home screen
   (iOS 16.4+). Function `remind` berjalan sekali sehari; tidak ada pengiriman real-time.
+- **Email pengingat opsional.** Isi `RESEND_API_KEY` (Resend) atau `SMTP_URL` (SMTP apa pun,
+  mis. Gmail app password) plus `REMINDER_EMAIL_FROM`, lalu deploy ulang function `remind`.
+  Tanpa konfigurasi itu email dilewati dan push tetap berjalan.
+- Email hanya dikirim sekali per user per hari (tabel `email_reminder_log`), jadi retry
+  trigger tidak menghasilkan duplikat. Penerima = email akun Neon Auth.
+- Shared SMTP Neon Auth (`auth@mail.myneon.app`) hanya untuk email autentikasi
+  (OTP/verifikasi/reset password) dan tidak bisa dipakai untuk pengingat aplikasi.
 - Ganti VAPID key = semua subscription lama harus mendaftar ulang.
