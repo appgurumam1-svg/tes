@@ -422,7 +422,7 @@ export default function App() {
               className={`sync-pill ${remoteEnabled ? 'sync-pill--cloud' : 'sync-pill--local'}`}
               title={
                 remoteEnabled
-                  ? 'Data disimpan di Neon Postgres'
+                  ? 'Tersinkron ke Neon Postgres'
                   : 'Data disimpan di localStorage browser ini'
               }
             >
