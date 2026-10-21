@@ -52,10 +52,10 @@ dan bisa dibuka dari perangkat lain. Tombol keluar ada di kanan atas.
 - **Ekspor Excel (.xlsx)** berisi sheet **Jadwal** dan **Riwayat** (siap dibuka di Excel/Sheets)
 - **Tema terang / gelap / ikuti sistem** (tersimpan di perangkat)
 - **PWA**: bisa dipasang ke home screen, shell tetap terbuka saat offline
-- **Notifikasi push** harian (Web Push + VAPID) untuk jadwal yang mendekati/lewat tenggat
+- **Notifikasi push** harian (Web Push + VAPID) dikirim function `remind` pukul 08.00 WIB untuk jadwal yang mendekati/lewat tenggat
 - **Verifikasi email & reset password** lewat OTP 6 digit (Neon Auth)
 - **Hapus lampiran** dari storage sekaligus melepas referensinya di riwayat
-- Data disimpan di `localStorage` browser — tanpa server, tanpa akun
+- Data tersimpan per akun di Neon Postgres; mode `localStorage` hanya dipakai bila `VITE_API_URL` kosong
 - Tema terang/gelap mengikuti preferensi sistem, layout responsif
 
 ## Struktur
@@ -91,7 +91,7 @@ src/
 | Neon Function | `remind` (cron harian `0 1 * * *` UTC / 08.00 WIB) |
 | Neon Auth | `https://ep-rapid-tooth-a1az3by9.neonauth.ap-southeast-1.aws.neon.tech/neondb/auth` |
 | Object Storage | bucket `assets` (private), endpoint `https://br-young-firefly-a130i8rh.storage.c-1.ap-southeast-1.aws.neon.tech` |
-| Frontend | https://ingatkansaya.vercel.app (alias lama: pengingataqil.vercel.app) |
+| Frontend | https://ingatkansaya.vercel.app (domain utama); alias: `pengingataqil.vercel.app` |
 | Vercel project | `tes` (env `VITE_API_URL`, `VITE_NEON_AUTH_URL`, target production/preview/development) |
 
 Aplikasi punya dua mode penyimpanan:
@@ -205,13 +205,15 @@ utama otomatis ter-deploy.
 ### Hosting statis lain
 
 `npm run build` menghasilkan folder `dist/` yang bisa diunggah ke Netlify, Cloudflare Pages,
-GitHub Pages, atau hosting statis apa pun. Tidak ada server/API yang dibutuhkan.
+GitHub Pages, atau hosting statis apa pun. Build tanpa `VITE_API_URL` berjalan dalam mode
+lokal; fitur akun, lampiran, dan push membutuhkan Neon Function.
 
 ## Catatan
 
 - Perhitungan memakai kalender lokal (`yyyy-mm-dd`), bukan timestamp, agar tidak bergeser
   karena timezone.
-- Aplikasi belum mengirim notifikasi push; status "Segera" muncul saat aplikasi dibuka.
+- Status "Segera" dihitung saat aplikasi dibuka; notifikasi push dikirim sekali sehari oleh
+  function `remind` (cron `0 1 * * *` UTC).
 - User baru otomatis mendapat 6 jadwal contoh saat pertama masuk; bisa dihapus.
 - Sesi Neon Auth memakai cookie `SameSite=None; Partitioned`. Browser yang memblokir total
   cookie pihak ketiga (mis. Safari dengan ITP ketat) bisa diminta login ulang.

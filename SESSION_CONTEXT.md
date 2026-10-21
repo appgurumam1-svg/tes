@@ -8,6 +8,14 @@
 - **Branch kerja:** `cline/787rz3m1`
 - **Commit terakhir saat dokumen ini dibuat:** `767c17d`
 - **Domain utama:** https://ingatkansaya.vercel.app
+- **Verifikasi terakhir (2026-10-21):** `npm test` 36/36 lulus, `npm run build` sukses,
+  `GET /health` → `{"ok":true,"database":"up"}`, situs produksi `200`, allowlist CORS
+  berperilaku benar (origin asing tanpa `Access-Control-Allow-Origin`, request tanpa JWT
+  → `401`), dan pemindaian seluruh 16 commit tidak menemukan kredensial ter-commit.
+  Uji E2E terautentikasi lulus: sign-up/sign-in → JWT, CRUD jadwal, log servis,
+  upload → signed URL → hapus lampiran, CRUD kategori, push subscribe/unsubscribe.
+  Workbook Excel berisi sheet `Jadwal` + `Riwayat`; aset PWA produksi (manifest, `sw.js`,
+  3 ikon) semua `200`; alias `pengingataqil.vercel.app` sudah menunjuk produksi.
 
 ---
 
@@ -35,7 +43,7 @@ DB **Neon Postgres**, auth **Neon Auth**, storage **Neon Object Storage**, hosti
 | --- | --- |
 | Frontend produksi | https://ingatkansaya.vercel.app |
 | Alias Vercel lain | `tes-appgurumam1-svg.vercel.app`, `tes-git-cline-787rz3m1-appgurumam1-svg.vercel.app` |
-| Alias lama (stale) | `pengingataqil.vercel.app` (masih menunjuk deployment lama) |
+| Alias sekunder | `pengingataqil.vercel.app` (domain proyek, menyajikan produksi yang sama; bukan domain utama) |
 | API Function | `https://br-young-firefly-a130i8rh-api.compute.c-1.ap-southeast-1.aws.neon.tech` |
 | Reminder Function | `https://br-young-firefly-a130i8rh-remind.compute.c-1.ap-southeast-1.aws.neon.tech` |
 | Neon Auth base | `https://ep-rapid-tooth-a1az3by9.neonauth.ap-southeast-1.aws.neon.tech/neondb/auth` |
@@ -216,7 +224,8 @@ curl -s -o /dev/null -w '%{http_code}\n' https://ingatkansaya.vercel.app/
    selalu `403`. Rename harus manual di GitHub Settings.
 2. **Deployment URL Vercel** (`tes-*.vercel.app`) dilindungi Vercel Authentication (302),
    sedangkan alias produksi `ingatkansaya.vercel.app` publik. Uji lewat alias.
-3. **Alias lama** `pengingataqil.vercel.app` masih menyajikan deployment lama.
+3. **Alias lama** `pengingataqil.vercel.app` kini terpasang sebagai domain proyek dan
+   menyajikan deployment produksi yang sama. Domain utama tetap `ingatkansaya.vercel.app`.
 4. **AI Gateway** tidak tersedia di plan Free → dihapus dari `neon.ts`.
 5. `neon deploy` menulis `.env.local` dengan nilai **ber-quote**; parser manual harus
    menghapus `"` di awal/akhir.
@@ -232,15 +241,18 @@ curl -s -o /dev/null -w '%{http_code}\n' https://ingatkansaya.vercel.app/
 
 ## 11. Handover checklist
 
-- [ ] `npm install && npm test && npm run build` hijau.
-- [ ] `neon deploy -y --env .env.local` sukses; `neon triggers list` menunjukkan `daily-reminder`.
-- [ ] `GET /health` → `{"ok":true,"database":"up"}`.
-- [ ] Login di `https://ingatkansaya.vercel.app` (daftar akun baru) berhasil.
-- [ ] Tambah jadwal + catat servis + upload lampiran + hapus lampiran.
-- [ ] Kelola kategori: tambah/ubah/hapus; jadwal pindah ke "Lainnya".
-- [ ] Ekspor Excel menghasilkan `.xlsx` 2 sheet.
-- [ ] Ganti tema (terang/gelap/sistem) dan install PWA.
-- [ ] Aktifkan notifikasi (ikon 🔔) → subscription tersimpan.
+- [x] `npm install && npm test && npm run build` hijau (36 test, 2026-10-21).
+- [x] Function `api` & `remind` berstatus `completed`; `neon triggers list` menunjukkan
+      `daily-reminder` (cron `0 1 * * *`, run berikutnya 2026-10-22T01:00Z). `neon deploy`
+      tidak dijalankan ulang karena source tidak berubah.
+- [x] `GET /health` → `{"ok":true,"database":"up"}`.
+- [x] Auth teruji lewat API: sign-up + sign-in + `/token` → JWT (akun uji sudah dihapus).
+- [x] Tambah/ubah/hapus jadwal, catat servis, upload → signed URL (`200`) → hapus lampiran.
+- [x] Kategori: 6 default ter-seed, tambah/ubah/hapus (reassign ke `lainnya`).
+- [x] Ekspor Excel: workbook berisi sheet `Jadwal` + `Riwayat`.
+- [ ] Ganti tema & install PWA di perangkat nyata (aset PWA produksi sudah `200`).
+- [ ] Terima notifikasi push di perangkat (butuh browser ber-izin; subscribe/unsubscribe
+      API sudah `201`/`200`).
 - [ ] Revoke semua token lama (lihat `SESSION_CREDENTIALS.local.md`).
 
 ---
