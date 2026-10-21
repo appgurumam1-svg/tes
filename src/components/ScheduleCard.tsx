@@ -122,7 +122,7 @@ export function ScheduleCard({
             <span className="sr-only">Hapus</span>
           </button>
           <button type="button" className="btn btn--primary btn--sm" onClick={() => onLog(schedule)}>
-            {schedule.kind === 'interval' ? 'Catat servis' : 'Perpanjang'}
+            {schedule.kind === 'interval' ? 'Tandai selesai' : 'Perpanjang'}
           </button>
         </div>
       </div>

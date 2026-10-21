@@ -121,7 +121,7 @@ Semua endpoint kecuali `/health` dan `/push/config` memerlukan
 | POST | `/schedules` | tambah jadwal |
 | PUT | `/schedules/:id` | ubah jadwal |
 | DELETE | `/schedules/:id` | hapus jadwal |
-| POST | `/schedules/:id/logs` | catat servis/perpanjangan (+ lampiran) |
+| POST | `/schedules/:id/logs` | tandai selesai/perpanjangan (+ lampiran) |
 | PUT | `/schedules` | ganti seluruh jadwal user (dipakai "Muat contoh") |
 | POST | `/uploads` | upload struk (multipart `file`, maks 8 MB, JPG/PNG/WEBP/HEIC/PDF) |
 | GET | `/uploads/signed?key=` | signed URL 10 menit |
@@ -267,7 +267,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://ingatkansaya.vercel.app/
       tidak dijalankan ulang karena source tidak berubah.
 - [x] `GET /health` → `{"ok":true,"database":"up"}`.
 - [x] Auth teruji lewat API: sign-up + sign-in + `/token` → JWT (akun uji sudah dihapus).
-- [x] Tambah/ubah/hapus jadwal, catat servis, upload → signed URL (`200`) → hapus lampiran.
+- [x] Tambah/ubah/hapus jadwal, tandai selesai, upload → signed URL (`200`) → hapus lampiran.
 - [x] Kategori: 6 default ter-seed, tambah/ubah/hapus (reassign ke `lainnya`).
 - [x] Ekspor Excel: workbook berisi sheet `Jadwal` + `Riwayat`.
 - [ ] Ganti tema & install PWA di perangkat nyata (aset PWA produksi sudah `200`).

@@ -30,7 +30,7 @@ npm run typecheck
    - **Tanggal tetap** — untuk dokumen dengan masa berlaku (SIM, STNK, plat nomor).
      Isi langsung *berlaku sampai*.
 3. Atur **ingatkan sebelum** berapa hari → status berubah jadi "Segera" saat mendekati tenggat.
-4. Saat servis/perpanjangan dilakukan, klik **Catat servis** / **Perpanjang**.
+4. Saat servis/perpanjangan dilakukan, klik **Tandai selesai** / **Perpanjang**.
    Tanggal terakhir (atau masa berlaku baru) otomatis diperbarui dan masuk ke riwayat.
 5. Lampiran struk/foto bisa diunggah saat mencatat (maks. 8 MB, JPG/PNG/WEBP/HEIC/PDF).
    File disimpan privat di Object Storage dan dibuka lewat tautan sementara.
@@ -67,7 +67,7 @@ src/
   components/
     ScheduleCard.tsx      kartu jadwal + countdown + progress
     ScheduleForm.tsx      form tambah/edit dengan preview jatuh tempo
-    LogModal.tsx          form catat servis / perpanjang
+    LogModal.tsx          form tandai selesai / perpanjang
     HistoryList.tsx       daftar riwayat + total biaya
     Modal.tsx             dialog aksesibel (Esc, backdrop, scroll lock)
     Icons.tsx             ikon SVG inline
@@ -126,7 +126,7 @@ migrasi manual.
 | POST | `/schedules` | Tambah jadwal |
 | PUT | `/schedules/:id` | Ubah jadwal |
 | DELETE | `/schedules/:id` | Hapus jadwal |
-| POST | `/schedules/:id/logs` | Catat servis / perpanjangan (+ lampiran) |
+| POST | `/schedules/:id/logs` | Tandai selesai / perpanjangan (+ lampiran) |
 | PUT | `/schedules` | Ganti seluruh isi milik user (dipakai "Muat contoh") |
 | POST | `/uploads` | Upload struk/foto (multipart `file`) |
 | GET | `/uploads/signed?key=` | URL sementara (10 menit) untuk lampiran |

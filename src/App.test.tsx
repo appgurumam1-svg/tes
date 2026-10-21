@@ -108,12 +108,12 @@ describe('App', () => {
     expect(within(dialog).getByText('Nama aktivitas wajib diisi.')).toBeTruthy();
   });
 
-  it('mencatat servis dan memperbarui tanggal terakhir', () => {
+  it('menandai selesai dan memperbarui tanggal terakhir', () => {
     render(<App />);
 
     const card = screen.getByText('Ganti oli motor').closest('article');
     expect(card).not.toBeNull();
-    fireEvent.click(within(card as HTMLElement).getByRole('button', { name: 'Catat servis' }));
+    fireEvent.click(within(card as HTMLElement).getByRole('button', { name: 'Tandai selesai' }));
 
     const dialog = screen.getByRole('dialog');
     fireEvent.change(within(dialog).getByLabelText('Tanggal dilakukan'), {
