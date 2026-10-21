@@ -11,3 +11,4 @@ dist-ssr
 !.env.example
 coverage
 .neon
+SESSION_CREDENTIALS.local.md
