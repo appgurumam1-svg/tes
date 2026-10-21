@@ -154,7 +154,7 @@ Semua endpoint `/schedules` dan `/uploads` memerlukan header
 | `VITE_NEON_AUTH_URL` | `NEON_AUTH_BASE_URL` | client (`src/lib/auth.ts`) |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | dibuat sendiri (web-push) | Function `api` & `remind` |
 | `VITE_VAPID_PUBLIC_KEY` | sama dengan public key | client (`src/lib/push.ts`) |
-| `RESEND_API_KEY` atau `SMTP_URL` | dibuat sendiri (Resend / SMTP) | email di Function `remind` |
+| `BREVO_API_KEY` / `RESEND_API_KEY` / `SMTP_URL` | dibuat sendiri (Brevo / Resend / SMTP) | email di Function `remind` |
 | `REMINDER_EMAIL_FROM` | mis. `Tenggat <appgurumam1@gmail.com>` | alamat pengirim email |
 | `APP_URL` | opsional, default `https://ingatkansaya.vercel.app` | tautan di email |
 | `APP_ORIGIN` | opsional, pisahkan dengan koma | tambahan origin CORS |
@@ -225,9 +225,9 @@ lokal; fitur akun, lampiran, dan push membutuhkan Neon Function.
   dan referensi di riwayat ikut terhapus.
 - Push notification butuh HTTPS + izin browser. Di iOS perlu PWA dipasang ke home screen
   (iOS 16.4+). Function `remind` berjalan sekali sehari; tidak ada pengiriman real-time.
-- **Email pengingat opsional.** Isi `RESEND_API_KEY` (Resend) atau `SMTP_URL` (SMTP apa pun,
-  mis. Gmail app password) plus `REMINDER_EMAIL_FROM`, lalu deploy ulang function `remind`.
-  Tanpa konfigurasi itu email dilewati dan push tetap berjalan.
+- **Email pengingat opsional.** Isi `BREVO_API_KEY` (disarankan), `RESEND_API_KEY`, atau
+  `SMTP_URL` (SMTP apa pun, mis. Gmail app password) plus `REMINDER_EMAIL_FROM`, lalu deploy
+  ulang function `remind`. Tanpa konfigurasi itu email dilewati dan push tetap berjalan.
 - Email hanya dikirim sekali per user per hari (tabel `email_reminder_log`), jadi retry
   trigger tidak menghasilkan duplikat. Penerima = email akun Neon Auth.
 - Shared SMTP Neon Auth (`auth@mail.myneon.app`) hanya untuk email autentikasi

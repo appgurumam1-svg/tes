@@ -182,7 +182,7 @@ Disimpan di `.env.local` (gitignored) dan di-set di Vercel untuk yang berawalan 
 | `NEON_AUTH_BASE_URL`, `NEON_AUTH_JWKS_URL` | Neon (pull) | URL aman |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL_S3`, `AWS_REGION` | Neon (pull) | tidak |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | dibuat sendiri | private key **tidak** |
-| `RESEND_API_KEY` atau `SMTP_URL` | dibuat sendiri (Resend / SMTP) | tidak |
+| `BREVO_API_KEY` / `RESEND_API_KEY` / `SMTP_URL` | dibuat sendiri (Brevo / Resend / SMTP) | tidak |
 | `REMINDER_EMAIL_FROM` | alamat pengirim email | tidak |
 | `APP_URL` | opsional, default `https://ingatkansaya.vercel.app` | ya |
 | `VITE_API_URL` | URL function | ya (ter-bundle) |
@@ -245,8 +245,10 @@ curl -s -o /dev/null -w '%{http_code}\n' https://ingatkansaya.vercel.app/
    sedangkan kode OTP didukung.
 10. Menghapus kategori memindahkan jadwal ke `lainnya` (tidak menghapus jadwal).
 11. **Shared SMTP Neon Auth hanya untuk email autentikasi** (OTP/verifikasi/reset), bukan
-    pengingat aplikasi. Email pengingat memakai provider sendiri: `RESEND_API_KEY` atau
-    `SMTP_URL` + `REMINDER_EMAIL_FROM` (lihat `.env.example`).
+    pengingat aplikasi. Email pengingat memakai provider sendiri: `BREVO_API_KEY`
+    (disarankan), `RESEND_API_KEY`, atau `SMTP_URL` + `REMINDER_EMAIL_FROM`
+    (lihat `.env.example`). API Brevo dipakai karena SMTP Brevo memblokir IP yang tidak
+    di-whitelist, sedangkan Neon Function memakai IP keluar dinamis.
 12. Email pengingat hanya dikirim sekali per user per hari lewat `email_reminder_log`;
     kalau pengiriman gagal, baris log dihapus agar percobaan berikutnya bisa mengirim ulang.
     Tanpa konfigurasi email, function tetap jalan dan hanya mengirim Web Push.

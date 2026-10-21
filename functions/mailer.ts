@@ -4,8 +4,9 @@ import { createTransport } from 'nodemailer';
  * Pengirim email untuk Function `remind`.
  *
  * Provider dipilih dari env (prioritas):
- *   1. `RESEND_API_KEY` — kirim lewat API Resend (tanpa dependency tambahan).
- *   2. `SMTP_URL`       — kirim lewat SMTP apa pun (mis. Gmail app password).
+ *   1. `BREVO_API_KEY`  — API Brevo (tidak terkena blokir IP SMTP).
+ *   2. `RESEND_API_KEY` — kirim lewat API Resend.
+ *   3. `SMTP_URL`       — kirim lewat SMTP apa pun (mis. Gmail app password).
  *
  * `REMINDER_EMAIL_FROM` wajib diisi, contoh:
  *   `Tenggat <appgurumam1@gmail.com>`
@@ -31,8 +32,19 @@ export interface MailResult {
 type FetchLike = typeof fetch;
 
 export function isEmailConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
-  const hasProvider = Boolean(env.RESEND_API_KEY?.trim() || env.SMTP_URL?.trim());
+  const hasProvider = Boolean(
+    env.BREVO_API_KEY?.trim() || env.RESEND_API_KEY?.trim() || env.SMTP_URL?.trim(),
+  );
   return hasProvider && Boolean(env.REMINDER_EMAIL_FROM?.trim());
+}
+
+/** `Tenggat <a@b.c>` → `{ name: 'Tenggat', email: 'a@b.c' }` */
+export function parseSender(from: string): { name?: string; email: string } {
+  const match = from.match(/^\s*(.*?)\s*<([^<>]+)>\s*$/);
+  if (match) {
+    return { name: match[1] || undefined, email: match[2].trim() };
+  }
+  return { email: from.trim() };
 }
 
 export async function sendMail(
@@ -45,6 +57,11 @@ export async function sendMail(
     return { sent: false, skipped: true, error: 'REMINDER_EMAIL_FROM belum diset.' };
   }
 
+  const brevoKey = env.BREVO_API_KEY?.trim();
+  if (brevoKey) {
+    return sendWithBrevo(message, from, brevoKey, fetchImpl);
+  }
+
   const resendKey = env.RESEND_API_KEY?.trim();
   if (resendKey) {
     return sendWithResend(message, from, resendKey, fetchImpl);
@@ -55,7 +72,44 @@ export async function sendMail(
     return sendWithSmtp(message, from, smtpUrl);
   }
 
-  return { sent: false, skipped: true, error: 'RESEND_API_KEY atau SMTP_URL belum diset.' };
+  return { sent: false, skipped: true, error: 'BREVO_API_KEY, RESEND_API_KEY, atau SMTP_URL belum diset.' };
+}
+
+export async function sendWithBrevo(
+  message: MailMessage,
+  from: string,
+  apiKey: string,
+  fetchImpl: FetchLike = fetch,
+): Promise<MailResult> {
+  const sender = parseSender(from);
+  let response: Response;
+  try {
+    response = await fetchImpl('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': apiKey,
+        'content-type': 'application/json',
+        accept: 'application/json',
+      },
+      body: JSON.stringify({
+        sender: sender.name ? { name: sender.name, email: sender.email } : { email: sender.email },
+        to: [{ email: message.to }],
+        subject: message.subject,
+        textContent: message.text,
+        htmlContent: message.html,
+      }),
+    });
+  } catch (error) {
+    return { sent: false, error: `Brevo tidak bisa dihubungi: ${(error as Error).message}` };
+  }
+
+  if (!response.ok) {
+    const detail = (await response.text().catch(() => '')).slice(0, 300);
+    return { sent: false, error: `Brevo HTTP ${response.status}${detail ? `: ${detail}` : ''}` };
+  }
+
+  const payload = (await response.json().catch(() => null)) as { messageId?: string } | null;
+  return { sent: true, id: payload?.messageId };
 }
 
 export async function sendWithResend(
