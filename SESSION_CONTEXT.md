@@ -8,7 +8,7 @@
 - **Branch kerja:** `cline/787rz3m1`
 - **Commit terakhir saat dokumen ini dibuat:** `767c17d`
 - **Domain utama:** https://ingatkansaya.vercel.app
-- **Verifikasi terakhir (2026-10-21):** `npm test` 49/49 lulus, `npm run build` sukses,
+- **Verifikasi terakhir (2026-10-21):** `npm test` 53/53 lulus, `npm run build` sukses,
   `GET /health` → `{"ok":true,"database":"up"}`, situs produksi `200`, allowlist CORS
   berperilaku benar (origin asing tanpa `Access-Control-Allow-Origin`, request tanpa JWT
   → `401`), dan pemindaian seluruh 16 commit tidak menemukan kredensial ter-commit.
@@ -16,6 +16,8 @@
   upload → signed URL → hapus lampiran, CRUD kategori, push subscribe/unsubscribe.
   Workbook Excel berisi sheet `Jadwal` + `Riwayat`; aset PWA produksi (manifest, `sw.js`,
   3 ikon) semua `200`; alias `pengingataqil.vercel.app` sudah menunjuk produksi.
+  Email pengingat aktif lewat **Brevo API**: email uji terkirim ke `appgurumam1@gmail.com`,
+  function `remind` deployment 4 memuat `BREVO_API_KEY` + `REMINDER_EMAIL_FROM` + VAPID.
 
 ---
 
@@ -165,7 +167,7 @@ plus `APP_ORIGIN` opsional (dipisah koma).
 | Tema terang/gelap/sistem | ✅ |
 | PWA (manifest, service worker, ikon) | ✅ |
 | Web Push harian (cron 01:00 UTC) | ✅ (pengiriman ke perangkat belum diuji dari sandbox) |
-| Email pengingat harian (Resend/SMTP, opsional) | ✅ kode + unit test; pengiriman nyata menunggu kredensial provider |
+| Email pengingat harian (Brevo API, opsional) | ✅ aktif; email uji terkirim 2026-10-21 |
 | Import JSON | ❌ dihapus (diganti ekspor Excel) |
 | Notifikasi real-time | ❌ (harian saja) |
 
@@ -249,7 +251,8 @@ curl -s -o /dev/null -w '%{http_code}\n' https://ingatkansaya.vercel.app/
     (disarankan), `RESEND_API_KEY`, atau `SMTP_URL` + `REMINDER_EMAIL_FROM`
     (lihat `.env.example`). Catatan Brevo: baik SMTP maupun API menolak IP yang tidak
     di-whitelist (`https://app.brevo.com/security/authorised_ips`), sedangkan Neon Function
-    memakai IP keluar dinamis — matikan pembatasan IP Brevo atau pakai provider lain.
+    memakai IP keluar dinamis. Untuk deployment ini blokir IP Brevo sudah **dinonaktifkan**
+    (API & SMTP keys) pada 2026-10-21.
 12. Email pengingat hanya dikirim sekali per user per hari lewat `email_reminder_log`;
     kalau pengiriman gagal, baris log dihapus agar percobaan berikutnya bisa mengirim ulang.
     Tanpa konfigurasi email, function tetap jalan dan hanya mengirim Web Push.
@@ -270,8 +273,8 @@ curl -s -o /dev/null -w '%{http_code}\n' https://ingatkansaya.vercel.app/
 - [ ] Ganti tema & install PWA di perangkat nyata (aset PWA produksi sudah `200`).
 - [ ] Terima notifikasi push di perangkat (butuh browser ber-izin; subscribe/unsubscribe
       API sudah `201`/`200`).
-- [ ] Kirim email pengingat nyata setelah `RESEND_API_KEY`/`SMTP_URL` +
-      `REMINDER_EMAIL_FROM` diset dan function `remind` di-deploy ulang.
+- [x] Kirim email pengingat nyata: email uji Brevo masuk (2026-10-21). Cron pertama
+      mengirim otomatis 2026-10-22 pukul 01:00 UTC (08.00 WIB).
 - [ ] Revoke semua token lama (lihat `SESSION_CREDENTIALS.local.md`).
 
 ---
@@ -281,7 +284,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://ingatkansaya.vercel.app/
 Nilai token/keys **tidak** ditulis di sini. Lihat:
 
 - `SESSION_CREDENTIALS.local.md` (gitignored, hanya ada di workspace)
-- `.env.local` (gitignored) untuk `DATABASE_URL`, AWS, VAPID, dan URL Neon
+- `.env.local` (gitignored) untuk `DATABASE_URL`, AWS, VAPID, `BREVO_API_KEY`, dan URL Neon
 
 > Jika file credentials hilang (sandbox dihapus), buat ulang:
 > - Vercel token: https://vercel.com/account/tokens
