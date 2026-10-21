@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { HistoryList } from './components/HistoryList';
 import { LogModal } from './components/LogModal';
 import { Modal } from './components/Modal';
@@ -12,9 +12,9 @@ import {
   LogOutIcon,
   PlusIcon,
   SearchIcon,
-  UploadIcon,
 } from './components/Icons';
 import { formatDateID, todayISO } from './lib/date';
+import { exportSchedulesToExcel } from './lib/excel';
 import { ApiError, remoteEnabled, scheduleApi } from './lib/api';
 import {
   authEnabled,
@@ -29,14 +29,7 @@ import { PushToggle } from './components/PushToggle';
 import { VerifyEmailForm } from './components/VerifyEmailForm';
 import { CATEGORY_META, computeSchedule, sortByUrgency, summarize } from './lib/schedule';
 import { createSeedSchedules } from './lib/seed';
-import {
-  downloadFile,
-  exportSchedules,
-  importSchedules,
-  loadSchedules,
-  saveSchedules,
-  uid,
-} from './lib/storage';
+import { loadSchedules, saveSchedules, uid } from './lib/storage';
 import type {
   Category,
   Filters,
@@ -85,7 +78,6 @@ export default function App() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(authEnabled);
   const [verifyOpen, setVerifyOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const bootstrapped = useRef<string | null>(null);
 
   // Sesi Neon Auth (cookie) dimuat sekali saat aplikasi dibuka.
@@ -339,23 +331,16 @@ export default function App() {
     }
   }
 
-  function handleExport() {
-    downloadFile(`tenggat-${today.replaceAll('-', '')}.json`, exportSchedules(schedules));
-    setToast('Backup JSON diunduh.');
-  }
-
-  async function handleImport(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
+  async function handleExport() {
+    if (schedules.length === 0) {
+      setToast('Belum ada jadwal untuk diekspor.');
+      return;
+    }
     try {
-      const imported = importSchedules(await file.text());
-      const next = remoteEnabled ? await scheduleApi.replaceAll(imported) : imported;
-      setSchedules(next);
-      setSyncError(null);
-      setToast(`${next.length} jadwal berhasil diimpor.`);
-    } catch (error) {
-      setToast(error instanceof Error ? error.message : 'Gagal mengimpor file.');
+      await exportSchedulesToExcel(schedules, today);
+      setToast('File Excel diunduh.');
+    } catch {
+      setToast('Gagal membuat file Excel.');
     }
   }
 
@@ -443,26 +428,15 @@ export default function App() {
               <CalendarIcon size={15} />
               {formatDateID(today, { weekday: true })}
             </span>
-            <button type="button" className="icon-btn" onClick={handleExport} title="Ekspor JSON">
-              <DownloadIcon size={17} />
-              <span className="sr-only">Ekspor</span>
-            </button>
             <button
               type="button"
               className="icon-btn"
-              onClick={() => fileInputRef.current?.click()}
-              title="Impor JSON"
+              onClick={() => void handleExport()}
+              title="Ekspor ke Excel (.xlsx)"
             >
-              <UploadIcon size={17} />
-              <span className="sr-only">Impor</span>
+              <DownloadIcon size={17} />
+              <span className="sr-only">Ekspor Excel</span>
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="application/json,.json"
-              hidden
-              onChange={handleImport}
-            />
             <button
               type="button"
               className="btn btn--primary"

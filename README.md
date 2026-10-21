@@ -48,7 +48,7 @@ dan bisa dibuka dari perangkat lain. Tombol keluar ada di kanan atas.
 - Status berwarna + progress bar pemakaian interval
 - Pencarian, filter status & kategori, urut dari yang paling mendesak
 - Riwayat lengkap dengan biaya aktual dan total pengeluaran per jadwal
-- Ekspor/impor JSON untuk backup atau pindah perangkat
+- **Ekspor Excel (.xlsx)** berisi sheet **Jadwal** dan **Riwayat** (siap dibuka di Excel/Sheets)
 - **Tema terang / gelap / ikuti sistem** (tersimpan di perangkat)
 - **PWA**: bisa dipasang ke home screen, shell tetap terbuka saat offline
 - **Notifikasi push** harian (Web Push + VAPID) untuk jadwal yang mendekati/lewat tenggat
@@ -72,7 +72,8 @@ src/
   lib/
     date.ts               aritmetika tanggal kalender (tanpa dependency)
     schedule.ts           status, progress, sorting, label
-    storage.ts            localStorage + validasi impor
+    storage.ts            localStorage + validasi data tersimpan
+    excel.ts              ekspor .xlsx (sheet Jadwal & Riwayat)
     seed.ts               data contoh saat pertama dibuka
   types.ts
   styles.css
@@ -124,7 +125,7 @@ migrasi manual.
 | PUT | `/schedules/:id` | Ubah jadwal |
 | DELETE | `/schedules/:id` | Hapus jadwal |
 | POST | `/schedules/:id/logs` | Catat servis / perpanjangan (+ lampiran) |
-| PUT | `/schedules` | Ganti seluruh isi milik user (impor JSON) |
+| PUT | `/schedules` | Ganti seluruh isi milik user (dipakai "Muat contoh") |
 | POST | `/uploads` | Upload struk/foto (multipart `file`) |
 | GET | `/uploads/signed?key=` | URL sementara (10 menit) untuk lampiran |
 | DELETE | `/uploads?key=` | Hapus lampiran + referensinya |
