@@ -90,7 +90,7 @@ src/
 | Neon Function | `remind` (cron harian `0 1 * * *` UTC / 08.00 WIB) |
 | Neon Auth | `https://ep-rapid-tooth-a1az3by9.neonauth.ap-southeast-1.aws.neon.tech/neondb/auth` |
 | Object Storage | bucket `assets` (private), endpoint `https://br-young-firefly-a130i8rh.storage.c-1.ap-southeast-1.aws.neon.tech` |
-| Frontend | https://pengingataqil.vercel.app |
+| Frontend | https://ingatkansaya.vercel.app (alias lama: pengingataqil.vercel.app) |
 | Vercel project | `tes` (env `VITE_API_URL`, `VITE_NEON_AUTH_URL`, target production/preview/development) |
 
 Aplikasi punya dua mode penyimpanan:
@@ -179,7 +179,7 @@ neon deploy --env .env.local   # sekaligus unggah env milik Function
   Token diverifikasi terhadap JWKS (`EdDSA`), issuer & audience dicek.
 - **Isolasi data:** tabel punya kolom `user_id`; semua query difilter `user_id = sub` dari JWT,
   sehingga user lain tidak bisa membaca/menghapus data (diuji → `404`).
-- **CORS:** hanya `https://pengingataqil.vercel.app`, localhost, dan preview project ini.
+- **CORS:** hanya `https://ingatkansaya.vercel.app`, `https://pengingataqil.vercel.app`, localhost, dan preview project ini.
   Origin asing tidak mendapat header `Access-Control-Allow-Origin`.
 - **Lampiran:** bucket privat; akses hanya lewat signed URL 10 menit milik pemilik key.
 - `DATABASE_URL` tidak pernah dikirim ke browser.

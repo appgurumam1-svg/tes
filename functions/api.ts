@@ -273,6 +273,7 @@ const app = new Hono();
 
 /** CORS dibatasi ke domain produksi, localhost, dan preview deployment project ini. */
 const ALLOWED_ORIGINS = new Set([
+  'https://ingatkansaya.vercel.app',
   'https://pengingataqil.vercel.app',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
