@@ -35,7 +35,7 @@ export function HistoryList({ schedule, onDeleteAttachment }: HistoryListProps) 
 
       {schedule.history.length === 0 ? (
         <p className="history__empty">
-          Belum ada catatan. Gunakan tombol {schedule.kind === 'fixed' ? '"Perpanjang"' : '"Catat servis"'} untuk
+          Belum ada catatan. Gunakan tombol {schedule.kind === 'fixed' ? '"Perpanjang"' : '"Tandai selesai"'} untuk
           menambah riwayat pertama.
         </p>
       ) : (

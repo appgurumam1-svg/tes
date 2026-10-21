@@ -750,7 +750,7 @@ export default function App() {
 
       <Modal
         open={logTarget !== null}
-        title={logTarget?.kind === 'fixed' ? 'Perpanjang masa berlaku' : 'Catat servis'}
+        title={logTarget?.kind === 'fixed' ? 'Perpanjang masa berlaku' : 'Tandai selesai'}
         subtitle={logTarget?.title}
         onClose={() => setLogTarget(null)}
       >
